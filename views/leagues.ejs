@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Botola Fantasy - <%= title %></title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container">
+    <a class="navbar-brand" href="/"><i class="bi bi-trophy-fill me-2"></i> Botola Fantasy</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"><span class="navbar-toggler-icon"></span></button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ms-auto">
+        <% if (user) { %>
+          <li class="nav-item"><a class="nav-link" href="/dashboard">My Team</a></li>
+          <li class="nav-item"><a class="nav-link" href="/leaderboard">Leaderboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="/friends">Friends</a></li>
+          <li class="nav-item"><a class="nav-link active" href="/leagues">Leagues</a></li>
+          <% if (user.isAdmin) { %><li class="nav-item"><a class="nav-link" href="/admin">Admin</a></li><% } %>
+          <li class="nav-item"><span class="navbar-text text-white me-3">Welcome, <%= user.username %>!</span></li>
+          <li class="nav-item"><button class="btn btn-outline-light" onclick="logout()">Logout</button></li>
+        <% } else { %>
+          <li class="nav-item"><a class="nav-link" href="/leaderboard">Leaderboard</a></li>
+          <li class="nav-item"><a class="nav-link btn btn-outline-light ms-2" href="/login">Login</a></li>
+          <li class="nav-item"><a class="nav-link btn btn-success ms-2" href="/signup">Sign Up</a></li>
+        <% } %>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-4">
+  <h2 class="mb-4">Private Leagues</h2>
+  <div id="leaguesAlert"></div>
+
+  <div class="row g-4 mb-4">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header"><strong>Create League</strong></div>
+        <div class="card-body">
+          <form id="createLeagueForm" onsubmit="createLeague(event)">
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-flag"></i></span>
+              <input type="text" id="leagueName" class="form-control" placeholder="League name" required>
+              <button class="btn btn-success" type="submit">Create</button>
+            </div>
+            <small class="text-muted">You’ll get an invite code to share with friends.</small>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header"><strong>Join League</strong></div>
+        <div class="card-body">
+          <form id="joinLeagueForm" onsubmit="joinLeague(event)">
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-key"></i></span>
+              <input type="text" id="inviteCode" class="form-control" placeholder="Invite code" required>
+              <button class="btn btn-primary" type="submit">Join</button>
+            </div>
+            <small class="text-muted">Enter a code provided by the league owner.</small>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>My Leagues</strong>
+      <span class="badge bg-secondary" id="myLeaguesCount">0</span>
+    </div>
+    <div class="card-body" id="myLeaguesList">
+      <div class="text-muted">No leagues yet</div>
+    </div>
+  </div>
+
+  <div class="card" id="leagueDetailCard" style="display:none;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <strong id="detailLeagueName">League</strong>
+        <span class="badge bg-info ms-2">Code: <span id="detailLeagueCode"></span></span>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" id="copyCodeBtn"><i class="bi bi-clipboard"></i> Copy Code</button>
+        <button class="btn btn-sm btn-outline-danger" id="leaveLeagueBtn"><i class="bi bi-box-arrow-right"></i> Leave</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-striped">
+          <thead><tr><th>#</th><th>User</th><th>Email</th><th>Points</th></tr></thead>
+          <tbody id="leagueStandings"><tr><td colspan="4" class="text-center">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/leagues.js"></script>
+<footer class="bg-dark text-white py-4 mt-5">
+  <div class="container text-center">
+    <p>&copy; 2025 Botola Fantasy. All rights reserved.</p>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/main.js"></script>
+</body>
+</html>

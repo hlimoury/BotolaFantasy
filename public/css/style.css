@@ -1,0 +1,57 @@
+:root { --morocco-red:#C1272D; --morocco-green:#006233; --morocco-gold:#FFD700; --dark-bg:#1a1a1a; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;background-color:#f8f9fa}
+
+/* Navbar */
+.navbar{background:linear-gradient(135deg,var(--morocco-red),var(--morocco-green));box-shadow:0 2px 4px rgba(0,0,0,0.1)}
+.navbar-brand{font-weight:bold;font-size:1.5rem}
+
+/* Hero */
+.hero-section{background:linear-gradient(135deg,var(--morocco-green),var(--morocco-red));min-height:500px;display:flex;align-items:center}
+
+/* Cards */
+.card{border:none;border-radius:10px;transition:transform .3s}
+.card:hover{transform:translateY(-5px)}
+
+/* Player cards */
+.player-card{border:2px solid #e0e0e0;border-radius:10px;padding:15px;margin-bottom:15px;cursor:pointer;transition:all .3s;background:#fff}
+.player-card:hover{border-color:var(--morocco-green);box-shadow:0 4px 8px rgba(0,0,0,.1)}
+.player-card.selected{background:linear-gradient(135deg,rgba(0,98,51,.1),rgba(193,39,45,.1));border-color:var(--morocco-gold)}
+.player-position{display:inline-block;padding:3px 8px;border-radius:5px;font-size:.85rem;font-weight:bold;color:#fff}
+.position-GK{background:#FFA500}.position-DEF{background:#4CAF50}.position-MID{background:#2196F3}.position-FWD{background:#F44336}
+
+/* Formation */
+.formation-container{background:linear-gradient(to bottom,#4CAF50,#2E7D32);border-radius:10px;padding:20px;min-height:600px;position:relative}
+.formation-row{display:flex;justify-content:center;margin:20px 0;gap:20px}
+.formation-player{background:#fff;border:2px solid var(--morocco-gold);border-radius:50%;width:80px;height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all .3s}
+.formation-player:hover{transform:scale(1.1)}
+.formation-player.captain{border-color:var(--morocco-red);background:linear-gradient(135deg,#fff,rgba(255,215,0,.3))}
+
+/* Budget */
+.budget-bar{background:#e0e0e0;border-radius:10px;height:30px;position:relative;overflow:hidden}
+.budget-fill{background:linear-gradient(90deg,var(--morocco-green),var(--morocco-red));height:100%;transition:width .3s}
+
+/* Leaderboard */
+.leaderboard-table{background:#fff;border-radius:10px;overflow:hidden}
+.leaderboard-table thead{background:linear-gradient(135deg,var(--morocco-green),var(--morocco-red));color:#fff}
+.rank-badge{display:inline-block;width:30px;height:30px;border-radius:50%;text-align:center;line-height:30px;font-weight:bold;color:#fff}
+.rank-1{background:gold;color:#000}.rank-2{background:silver;color:#000}.rank-3{background:#CD7F32}
+
+/* Forms */
+.form-control:focus{border-color:var(--morocco-green);box-shadow:0 0 0 .2rem rgba(0,98,51,.25)}
+.btn-primary{background:var(--morocco-green);border-color:var(--morocco-green)}
+.btn-primary:hover{background:#004d26;border-color:#004d26}
+.btn-success{background:var(--morocco-red);border-color:var(--morocco-red)}
+.btn-success:hover{background:#9e1f23;border-color:#9e1f23}
+
+/* Admin */
+.admin-sidebar{background:var(--dark-bg);min-height:100vh;color:#fff}
+.admin-sidebar .nav-link{color:#ccc;padding:10px 20px;transition:all .3s}
+.admin-sidebar .nav-link:hover,.admin-sidebar .nav-link.active{background:var(--morocco-green);color:#fff}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .formation-player{width:60px;height:60px;font-size:.8rem}
+  .player-card{padding:10px}
+  .hero-section{min-height:400px}
+}

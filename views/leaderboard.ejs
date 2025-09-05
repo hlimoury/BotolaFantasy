@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Botola Fantasy - <%= title %></title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container">
+    <a class="navbar-brand" href="/"><i class="bi bi-trophy-fill me-2"></i> Botola Fantasy</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ms-auto">
+        <% if (user) { %>
+          <li class="nav-item"><a class="nav-link" href="/dashboard">My Team</a></li>
+          <li class="nav-item"><a class="nav-link" href="/leaderboard">Leaderboard</a></li>
+          <% if (user.isAdmin) { %><li class="nav-item"><a class="nav-link" href="/admin">Admin</a></li><% } %>
+          <li class="nav-item"><span class="navbar-text text-white me-3">Welcome, <%= user.username %>!</span></li>
+          <li class="nav-item"><button class="btn btn-outline-light" onclick="logout()">Logout</button></li>
+        <% } else { %>
+          <li class="nav-item"><a class="nav-link" href="/leaderboard">Leaderboard</a></li>
+          <li class="nav-item"><a class="nav-link btn btn-outline-light ms-2" href="/login">Login</a></li>
+          <li class="nav-item"><a class="nav-link btn btn-success ms-2" href="/signup">Sign Up</a></li>
+        <% } %>
+      </ul>
+    </div>
+  </div>
+</nav>
+<div class="container py-5">
+  <h2 class="text-center mb-4">Leaderboard</h2>
+
+  <div class="text-center mb-4">
+    <div class="btn-group" role="group">
+      <button type="button" class="btn btn-primary active" onclick="loadOverallLeaderboard()">Overall</button>
+      <button type="button" class="btn btn-outline-primary" onclick="loadGameweekLeaderboard()">Gameweek</button>
+    </div>
+  </div>
+
+  <div class="row mb-3 d-none" id="gameweekSelector">
+    <div class="col-md-4 mx-auto">
+      <select class="form-select" id="gameweekSelect" onchange="loadGameweekLeaderboard()"></select>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-md-6 mx-auto">
+      <div class="input-group">
+        <input type="text" class="form-control" placeholder="Search manager..." id="searchInput">
+        <button class="btn btn-outline-secondary" type="button"><i class="bi bi-search"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow leaderboard-table">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead><tr><th width="80">Rank</th><th>Manager</th><th>Favorite Club</th><th width="120">Points</th><th width="100">Trend</th></tr></thead>
+          <tbody id="leaderboardTable"><tr><td colspan="5" class="text-center py-4"><div class="spinner-border"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <nav class="mt-4"><ul class="pagination justify-content-center" id="pagination"></ul></nav>
+</div>
+
+<script>
+let currentPage = 1, totalPages = 1, leaderboardType = 'overall';
+document.addEventListener('DOMContentLoaded', async () => {
+  // Populate gameweek selector
+  const gwRes = await fetch('/api/gameweeks');
+  const gws = await gwRes.json();
+  const sel = document.getElementById('gameweekSelect');
+  gws.forEach(g => { const opt = document.createElement('option'); opt.value = g.weekNumber; opt.textContent = `Gameweek ${g.weekNumber}`; sel.appendChild(opt); });
+  loadOverallLeaderboard();
+});
+async function loadOverallLeaderboard() {
+  leaderboardType = 'overall'; document.getElementById('gameweekSelector').classList.add('d-none'); updateButtonStates('overall');
+  const res = await fetch(`/api/leaderboard?page=${currentPage}&limit=20`); const data = await res.json();
+  displayLeaderboard(data.users); totalPages = data.totalPages; updatePagination();
+}
+async function loadGameweekLeaderboard() {
+  leaderboardType = 'gameweek'; document.getElementById('gameweekSelector').classList.remove('d-none'); updateButtonStates('gameweek');
+  const week = document.getElementById('gameweekSelect').value; const res = await fetch(`/api/leaderboard/gameweek/${week}`); const users = await res.json(); displayLeaderboard(users); document.getElementById('pagination').innerHTML = '';
+}
+function displayLeaderboard(users) {
+  const tbody = document.getElementById('leaderboardTable');
+  if (!users || users.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4">No data</td></tr>`; return; }
+  tbody.innerHTML = users.map((u, i) => {
+    const rank = (currentPage - 1) * 20 + i + 1; const badge = rank <= 3 ? `<span class="rank-badge rank-${rank}">${rank}</span>` : rank;
+    const club = u.club?.name || u.favoriteClub?.name || 'N/A';
+    const pts = u.totalPoints ?? u.points ?? 0;
+    const trend = Math.random() > 0.5 ? '<i class="bi bi-arrow-up text-success"></i>' : '<i class="bi bi-arrow-down text-danger"></i>';
+    return `<tr><td>${badge}</td><td><strong>${u.username}</strong></td><td>${club}</td><td><strong>${pts}</strong> pts</td><td>${trend}</td></tr>`;
+  }).join('');
+}
+function updateButtonStates(active) {
+  document.querySelectorAll('.btn-group button').forEach(b => {
+    b.classList.remove('btn-primary','btn-outline-primary','active');
+    if ((active === 'overall' && b.textContent.trim()==='Overall') || (active==='gameweek' && b.textContent.trim()==='Gameweek')) b.classList.add('btn-primary','active');
+    else b.classList.add('btn-outline-primary');
+  });
+}
+function updatePagination() {
+  const p = document.getElementById('pagination'); let html = ''; if (totalPages > 1) {
+    html += `<li class="page-item ${currentPage===1?'disabled':''}"><a class="page-link" href="#" onclick="changePage(${currentPage-1})">Prev</a></li>`;
+    for (let i=1;i<=Math.min(totalPages,5);i++) html += `<li class="page-item ${currentPage===i?'active':''}"><a class="page-link" href="#" onclick="changePage(${i})">${i}</a></li>`;
+    html += `<li class="page-item ${currentPage===totalPages?'disabled':''}"><a class="page-link" href="#" onclick="changePage(${currentPage+1})">Next</a></li>`;
+  }
+  p.innerHTML = html;
+}
+function changePage(pg) { if (pg<1||pg>totalPages) return; currentPage=pg; if (leaderboardType==='overall') loadOverallLeaderboard(); }
+document.getElementById('searchInput').addEventListener('input', (e)=> {
+  const term = e.target.value.toLowerCase();
+  document.querySelectorAll('#leaderboardTable tr').forEach(r=>{
+    const name = r.querySelector('td:nth-child(2)')?.textContent.toLowerCase()||'';
+    r.style.display = name.includes(term) ? '' : 'none';
+  });
+});
+</script>
+<footer class="bg-dark text-white py-4 mt-5">
+  <div class="container text-center">
+    <p>&copy; 2025 Botola Fantasy. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/main.js"></script>
+</body>
+</html>

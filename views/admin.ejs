@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Botola Fantasy - <%= title %></title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .admin-sidebar { background: #111; min-height: 100vh; color: #fff; }
+    .admin-sidebar .nav-link { color: #bbb; }
+    .admin-sidebar .nav-link.active { background: #0d6efd; color: #fff; }
+    .perf-row .form-control, .perf-row .form-select { min-width: 90px; }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container">
+    <a class="navbar-brand" href="/"><i class="bi bi-trophy-fill me-2"></i> Botola Fantasy</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ms-auto">
+        <% if (user) { %>
+          <li class="nav-item"><a class="nav-link" href="/dashboard">My Team</a></li>
+          <li class="nav-item"><a class="nav-link" href="/leaderboard">Leaderboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="/friends">Friends</a></li>
+          <li class="nav-item"><a class="nav-link" href="/leagues">Leagues</a></li>
+          <% if (user.isAdmin) { %><li class="nav-item"><a class="nav-link active" href="/admin">Admin</a></li><% } %>
+          <li class="nav-item"><span class="navbar-text text-white me-3">Welcome, <%= user.username %>!</span></li>
+          <li class="nav-item"><button class="btn btn-outline-light" onclick="logout()">Logout</button></li>
+        <% } else { %>
+          <li class="nav-item"><a class="nav-link" href="/leaderboard">Leaderboard</a></li>
+          <li class="nav-item"><a class="nav-link btn btn-outline-light ms-2" href="/login">Login</a></li>
+          <li class="nav-item"><a class="nav-link btn btn-success ms-2" href="/signup">Sign Up</a></li>
+        <% } %>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-3 col-lg-2 d-md-block admin-sidebar">
+      <div class="position-sticky pt-3">
+        <ul class="nav flex-column">
+          <li class="nav-item"><a class="nav-link active" href="#" data-section="overview"><i class="bi bi-speedometer2"></i> Overview</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-section="sync"><i class="bi bi-cloud-arrow-down"></i> Sync</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-section="players"><i class="bi bi-people"></i> Players</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-section="clubs"><i class="bi bi-shield"></i> Clubs</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-section="matches"><i class="bi bi-calendar-event"></i> Matches</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-section="gameweeks"><i class="bi bi-calendar-week"></i> Gameweeks</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-section="teams"><i class="bi bi-people-fill"></i> Teams</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-section="users"><i class="bi bi-person-badge"></i> Users</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+      <div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Admin Dashboard</h1>
+      </div>
+
+      <div id="overview-section" class="admin-section">
+        <h3>System Overview</h3>
+        <div class="row g-3 mb-4">
+          <div class="col-md-3"><div class="card text-white bg-primary"><div class="card-body"><h5>Total Users</h5><h2 id="totalUsers">0</h2></div></div></div>
+          <div class="col-md-3"><div class="card text-white bg-success"><div class="card-body"><h5>Total Players</h5><h2 id="totalPlayers">0</h2></div></div></div>
+          <div class="col-md-3"><div class="card text-white bg-info"><div class="card-body"><h5>Active Gameweek</h5><h2 id="activeGameweek">-</h2></div></div></div>
+          <div class="col-md-3"><div class="card text-white bg-warning"><div class="card-body"><h5>Matches Today</h5><h2 id="matchesToday">0</h2></div></div></div>
+        </div>
+      </div>
+
+      <div id="sync-section" class="admin-section" style="display:none;">
+        <h3>API Sync <small class="text-muted">(optional)</small></h3>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <button class="btn btn-outline-primary" onclick="triggerSync('clubs')">Sync Clubs</button>
+          <button class="btn btn-outline-primary" onclick="triggerSync('players')">Sync Players</button>
+          <button class="btn btn-outline-primary" onclick="triggerSync('fixtures')">Sync Fixtures & Gameweeks</button>
+          <button class="btn btn-outline-success" onclick="triggerSync('results')">Process Finished Matches</button>
+          <button class="btn btn-outline-danger" onclick="recalculateAll()">Recalculate Points</button>
+        </div>
+        <div id="syncLog" class="alert alert-secondary" style="white-space:pre-wrap;"></div>
+      </div>
+
+      <div id="players-section" class="admin-section" style="display:none;">
+        <div class="d-flex justify-content-between mb-3">
+          <h3>Players</h3>
+          <button class="btn btn-sm btn-success" onclick="openPlayerCreate()">Add Player</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead><tr><th>Name</th><th>Position</th><th>Club</th><th>Price</th><th>Points</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="playersTable"><tr><td colspan="7" class="text-center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="clubs-section" class="admin-section" style="display:none;">
+        <div class="d-flex justify-content-between mb-3">
+          <h3>Clubs</h3>
+        </div>
+        <div class="row" id="clubsGrid"><div class="col-12 text-center">Loading...</div></div>
+      </div>
+
+      <div id="matches-section" class="admin-section" style="display:none;">
+        <div class="d-flex justify-content-between mb-3">
+          <h3>Matches</h3>
+          <button class="btn btn-sm btn-success" onclick="openMatchModal('create')"><i class="bi bi-plus"></i> Add Match</button>
+        </div>
+        <div id="matchesList"><div class="text-center">Loading...</div></div>
+      </div>
+
+      <div id="gameweeks-section" class="admin-section" style="display:none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h3>Gameweeks</h3>
+          <button class="btn btn-sm btn-success" onclick="openGWModal('create')"><i class="bi bi-plus"></i> Add Gameweek</button>
+        </div>
+        <div class="row mt-2" id="gameweeksList"><div class="col-12 text-center">Loading...</div></div>
+      </div>
+
+      <!-- NEW: Teams section -->
+      <div id="teams-section" class="admin-section" style="display:none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h3>User Teams</h3>
+          <div class="input-group" style="max-width: 380px;">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" id="teamSearch" class="form-control" placeholder="Search by username or email" oninput="filterTeams()">
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover">
+            <thead><tr><th>User</th><th>Email</th><th>Team Size</th><th>Budget</th><th>Free Transfers</th><th>Transfers This GW</th><th>Points</th><th>Actions</th></tr></thead>
+            <tbody id="teamsTable"><tr><td colspan="8" class="text-center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="users-section" class="admin-section" style="display:none;">
+        <h3>Users</h3>
+        <div class="table-responsive mt-4">
+          <table class="table table-hover">
+            <thead><tr><th>Username</th><th>Email</th><th>Points</th><th>Team Size</th><th>Joined</th></tr></thead>
+            <tbody id="usersTable"><tr><td colspan="5" class="text-center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- GW Modal -->
+<div class="modal fade" id="gwModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" onsubmit="submitGWForm(event)">
+      <div class="modal-header">
+        <h5 class="modal-title" id="gwModalTitle">Add Gameweek</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="gwId">
+        <div class="mb-2"><label class="form-label">Week Number</label><input type="number" id="gwWeekNumber" class="form-control" required></div>
+        <div class="mb-2"><label class="form-label">Round Label</label><input type="text" id="gwRoundLabel" class="form-control" placeholder="Regular Season - X"></div>
+        <div class="mb-2"><label class="form-label">Start Date</label><input type="datetime-local" id="gwStartDate" class="form-control"></div>
+        <div class="mb-2"><label class="form-label">End Date</label><input type="datetime-local" id="gwEndDate" class="form-control"></div>
+        <div class="mb-2"><label class="form-label">Deadline</label><input type="datetime-local" id="gwDeadline" class="form-control"><small class="text-muted">If empty, defaults to Start Date</small></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Match Modal -->
+<div class="modal fade" id="matchModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" onsubmit="submitMatchForm(event)">
+      <div class="modal-header">
+        <h5 class="modal-title" id="matchModalTitle">Add Match</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="matchId">
+        <div class="mb-2"><label class="form-label">Home Club</label><select id="matchHomeClub" class="form-select" required></select></div>
+        <div class="mb-2"><label class="form-label">Away Club</label><select id="matchAwayClub" class="form-select" required></select></div>
+        <div class="mb-2"><label class="form-label">Gameweek</label><select id="matchGameweek" class="form-select"></select></div>
+        <div class="mb-2"><label class="form-label">Date</label><input type="datetime-local" id="matchDate" class="form-control" required></div>
+        <div class="mb-2"><label class="form-label">Round Label</label><input type="text" id="matchRound" class="form-control" placeholder="Regular Season - N"></div>
+        <div class="mb-2"><label class="form-label">Week Number</label><input type="number" id="matchWeekNumber" class="form-control" placeholder="Optional"></div>
+        <div class="mb-2"><label class="form-label">Status</label><input type="text" id="matchStatus" class="form-control" placeholder="NS, FT, PST..."></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Performances Modal -->
+<div class="modal fade" id="perfModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <form class="modal-content" onsubmit="submitPerfForm(event)">
+      <div class="modal-header">
+        <h5 class="modal-title" id="perfModalTitle">Enter Match Results & Performances</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="perfMatchId">
+        <div class="row g-2 mb-2">
+          <div class="col-md-4"><label class="form-label">Home Score</label><input type="number" id="perfHomeScore" class="form-control" min="0"></div>
+          <div class="col-md-4"><label class="form-label">Away Score</label><input type="number" id="perfAwayScore" class="form-control" min="0"></div>
+          <div class="col-md-4"><label class="form-label">Status</label><input type="text" id="perfStatus" class="form-control" placeholder="FT"></div>
+        </div>
+        <div class="mb-2 d-flex align-items-center justify-content-between">
+          <h6 class="mb-0">Player Performances</h6>
+          <div class="d-flex gap-2">
+            <select id="perfPlayerSelect" class="form-select form-select-sm" style="min-width: 280px;"></select>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addPerfRowFromSelect()">Add Player</button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm" id="perfTable">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Min</th>
+                <th>G</th>
+                <th>A</th>
+                <th>Conc</th>
+                <th>CS</th>
+                <th>YC</th>
+                <th>RC</th>
+                <th>Saves</th>
+                <th>Pen Saved</th>
+                <th>Pen Miss</th>
+                <th>OG</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="perfTbody"></tbody>
+          </table>
+        </div>
+        <small class="text-muted">Points will be calculated automatically on save.</small>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save Results</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- NEW: Team Modal -->
+<div class="modal fade" id="teamModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <form class="modal-content" onsubmit="submitTeamAdminForm(event)">
+      <div class="modal-header">
+        <h5 class="modal-title" id="teamModalTitle">Edit User Team</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="teamUserId">
+        <div class="row g-2">
+          <div class="col-md-4">
+            <label class="form-label">Username</label>
+            <input class="form-control" id="teamUsername" disabled>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Free Transfers</label>
+            <input type="number" class="form-control" id="teamFreeTransfers" min="0" max="10">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Budget (remaining)</label>
+            <input type="number" class="form-control" id="teamBudget" min="0" step="0.1">
+          </div>
+        </div>
+
+        <hr>
+        <h6>Squad (15)</h6>
+        <div id="teamPlayersList" class="mb-2"></div>
+
+        <div class="d-flex gap-2 align-items-end">
+          <div class="flex-grow-1">
+            <label class="form-label">Add Player by ID</label>
+            <input type="text" class="form-control" id="addPlayerIdInput" placeholder="Paste Player ObjectId">
+          </div>
+          <button class="btn btn-outline-primary" type="button" onclick="adminAddPlayerToUser()">Add</button>
+        </div>
+        <small class="text-muted">Tip: find a player ID from the Players tab or your DB viewer.</small>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-danger" type="button" onclick="adminClearUserTeam()">Clear Team</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-primary" type="submit">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/admin.js"></script>
+<footer class="bg-dark text-white py-4 mt-5">
+  <div class="container text-center">
+    <p>&copy; 2025 Botola Fantasy. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/main.js"></script>
+</body>
+</html>
