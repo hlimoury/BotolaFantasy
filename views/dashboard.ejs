@@ -1,38 +1,614 @@
+<!-- dashboard.ejs -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Botola Fantasy - <%= title %></title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css">
   <style>
-    .formation-container { background: #0b5ed7; border-radius: 8px; min-height: 220px; padding: 12px; }
-    .formation-row { display: flex; justify-content: center; gap: 6px; margin: 6px 0; flex-wrap: wrap; }
-    .formation-player { background: rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 6px 8px; text-align: center; min-width: 90px; position: relative; cursor: pointer; }
-    .formation-player.captain { outline: 2px solid #ffc107; }
-    .formation-player.mark-out { outline: 2px dashed #ff4d4f; }
-    .captain-badge, .vice-badge { position: absolute; top: -8px; right: -8px; background: #ffc107; color: #000; font-weight: 700; border-radius: 50%; padding: 2px 6px; font-size: 10px; }
-    .vice-badge { background: #6c757d; color: #fff; right: -8px; top: 18px; }
-    .player-card.selected { outline: 2px solid #198754; }
-    .small-muted { font-size: 12px; color: #6c757d; }
-    .badge-locked { background: #dc3545; }
-    .badge-open { background: #198754; }
-    .bench-select { min-width: 70px; }
-    .lock-overlay { pointer-events: none; opacity: 0.6; }
-    .sticky-mobile-bar { position: sticky; bottom: 0; background: #fff; z-index: 20; border-top: 1px solid #eee; padding: 8px 12px; }
-    .player-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
-    .player-card .btn { padding: 2px 8px; }
+    :root {
+      --pitch-green: #2ecc71;
+      --pitch-dark: #27ae60;
+      --primary-purple: #ff0000;
+      --dark-bg: #2c3e50;
+      --card-bg: rgba(255,255,255,0.95);
+    }
+
+    * { box-sizing: border-box; }
+    
+    body {
+      background: linear-gradient(135deg, #9b0000 0%, #007d02 100%);
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    .navbar {
+      background: rgba(0,0,0,0.3);
+      backdrop-filter: blur(10px);
+      border: none;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .main-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px 10px;
+    }
+
+    /* Top Stats Bar */
+    .stats-bar {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 15px;
+      margin-bottom: 20px;
+      color: white;
+    }
+
+    .stat-item {
+      text-align: center;
+      padding: 5px;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      opacity: 0.9;
+      text-transform: uppercase;
+    }
+
+    /* Pitch Container */
+    .pitch-wrapper {
+      background: linear-gradient(to bottom, #1e3c72, #2a5298);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      margin-bottom: 20px;
+    }
+
+    .pitch-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 20px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 15px 15px 0 0;
+      color: white;
+      margin: -20px -20px 0 -20px;
+    }
+
+    .pitch {
+      position: relative;
+      background: linear-gradient(to bottom, #2ecc71, #27ae60);
+      border-radius: 10px;
+      padding: 30px 20px;
+      min-height: 500px;
+      margin-top: 20px;
+      box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+
+    /* Pitch lines */
+    .pitch::before {
+      content: '';
+      position: absolute;
+      top: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      height: 80%;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 5px;
+    }
+
+    .pitch::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: rgba(255,255,255,0.3);
+    }
+
+    .center-circle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 80px;
+      height: 80px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+    }
+
+    .penalty-box-top {
+      position: absolute;
+      top: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 40%;
+      height: 15%;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top: none;
+      border-radius: 0 0 5px 5px;
+    }
+
+    .penalty-box-bottom {
+      position: absolute;
+      bottom: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 40%;
+      height: 15%;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-bottom: none;
+      border-radius: 5px 5px 0 0;
+    }
+
+    /* Formation rows */
+    .formation-row {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 25px 0;
+      z-index: 10;
+    }
+
+    .position-slot {
+      background: rgba(0,0,0,0.3);
+      border: 2px dashed rgba(255,255,255,0.5);
+      border-radius: 10px;
+      width: 90px;
+      height: 100px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .position-slot:hover {
+      background: rgba(255,255,255,0.1);
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    }
+
+    .position-slot.filled {
+      background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.1));
+      border: 2px solid rgba(255,255,255,0.8);
+    }
+
+    .position-slot .add-icon {
+      font-size: 2rem;
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 5px;
+    }
+
+    .position-label {
+      background: rgba(0,0,0,0.5);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: bold;
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .player-info {
+      text-align: center;
+      color: white;
+      padding: 5px;
+    }
+
+    .player-name {
+      font-size: 0.75rem;
+      font-weight: bold;
+      margin: 5px 0;
+      word-break: break-word;
+    }
+
+    .player-price {
+      font-size: 0.7rem;
+      opacity: 0.9;
+    }
+
+    .player-club {
+      font-size: 0.65rem;
+      opacity: 0.8;
+    }
+
+    .captain-badge, .vice-badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      background: #ffd700;
+      color: #000;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 0.7rem;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      z-index: 20;
+    }
+
+    .vice-badge {
+      background: #c0c0c0;
+    }
+
+    .transfer-out {
+      filter: grayscale(100%);
+      opacity: 0.6;
+    }
+
+    .transfer-out::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 5px,
+        rgba(255,0,0,0.3) 5px,
+        rgba(255,0,0,0.3) 10px
+      );
+    }
+
+    /* Bench section */
+    .bench-section {
+      background: rgba(0,0,0,0.2);
+      border-radius: 10px;
+      padding: 15px;
+      margin-top: 20px;
+    }
+
+    .bench-label {
+      color: white;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      opacity: 0.8;
+    }
+
+    .bench-row {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .bench-slot {
+      width: 80px;
+      height: 90px;
+    }
+
+    /* Player Selection Modal */
+    .player-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .player-modal.active {
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+
+    .modal-content {
+      background: white;
+      width: 100%;
+      max-width: 600px;
+      max-height: 70vh;
+      border-radius: 20px 20px 0 0;
+      animation: slideUp 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      padding: 20px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+
+    .close-modal {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #666;
+    }
+
+    .modal-filters {
+      padding: 15px 20px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+    }
+
+    .filter-btn {
+      padding: 5px 15px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      background: white;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.3s;
+    }
+
+    .filter-btn.active {
+      background: var(--primary-purple);
+      color: white;
+      border-color: var(--primary-purple);
+    }
+
+    .players-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .player-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      margin-bottom: 8px;
+      background: #f8f9fa;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .player-item:hover {
+      background: #e9ecef;
+      transform: translateX(5px);
+    }
+
+    .player-item.selected {
+      background: #d4edda;
+      border: 2px solid #28a745;
+    }
+
+    .player-item-info {
+      flex: 1;
+    }
+
+    .player-item-name {
+      font-weight: bold;
+      margin-bottom: 3px;
+    }
+
+    .player-item-details {
+      font-size: 0.8rem;
+      color: #666;
+    }
+
+    .player-item-stats {
+      text-align: right;
+    }
+
+    .player-item-price {
+      font-weight: bold;
+      color: var(--primary-purple);
+      margin-bottom: 3px;
+    }
+
+    .player-item-points {
+      font-size: 0.8rem;
+      color: #666;
+    }
+
+    /* Control buttons */
+    .controls-section {
+      background: white;
+      border-radius: 15px;
+      padding: 20px;
+      margin-top: 20px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    }
+
+    .control-btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin: 5px;
+    }
+
+    .btn-primary {
+      background: var(--primary-purple);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(108, 92, 231, 0.4);
+    }
+
+    .btn-secondary {
+      background: #e9ecef;
+      color: #495057;
+    }
+
+    .transfer-mode-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 15px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 20px;
+      color: white;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .main-container {
+        padding: 10px 5px;
+      }
+
+      .stats-bar {
+        padding: 10px;
+        overflow-x: auto;
+      }
+
+      .stat-value {
+        font-size: 1.2rem;
+      }
+
+      .pitch {
+        min-height: 400px;
+        padding: 20px 10px;
+      }
+
+      .position-slot {
+        width: 70px;
+        height: 85px;
+      }
+
+      .bench-slot {
+        width: 65px;
+        height: 75px;
+      }
+
+      .formation-row {
+        gap: 5px;
+        margin: 15px 0;
+      }
+
+      .player-name {
+        font-size: 0.65rem;
+      }
+
+      .modal-content {
+        max-height: 80vh;
+      }
+
+      .controls-section {
+        position: sticky;
+        bottom: 0;
+        border-radius: 15px 15px 0 0;
+        margin-top: 10px;
+        z-index: 100;
+      }
+    }
+
     @media (max-width: 576px) {
-      .formation-player { min-width: 72px; font-size: 12px; padding: 6px; }
-      .formation-container { min-height: 180px; }
+      .position-slot {
+        width: 60px;
+        height: 75px;
+      }
+
+      .formation-row {
+        gap: 3px;
+      }
+
+      .player-name {
+        font-size: 0.6rem;
+      }
+
+      .player-price, .player-club {
+        font-size: 0.55rem;
+      }
+    }
+
+    /* Loading state */
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Squad value bar */
+    .squad-value-bar {
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 10px;
+      margin: 15px 0;
+    }
+
+    .value-progress {
+      background: rgba(255,255,255,0.2);
+      border-radius: 5px;
+      height: 8px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+
+    .value-fill {
+      background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+      height: 100%;
+      transition: width 0.5s ease;
+      max-width: 100%;
+    }
+
+    .value-labels {
+      display: flex;
+      justify-content: space-between;
+      color: white;
+      font-size: 0.85rem;
     }
   </style>
 </head>
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark">
-    <div class="container">
+    <div class="container-fluid">
       <a class="navbar-brand" href="/"><i class="bi bi-trophy-fill me-2"></i> Botola Fantasy</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
         <span class="navbar-toggler-icon"></span>
@@ -42,179 +618,236 @@
           <% if (user) { %>
             <li class="nav-item"><a class="nav-link active" href="/dashboard">My Team</a></li>
             <li class="nav-item"><a class="nav-link" href="/leaderboard">Leaderboard</a></li>
-            <li class="nav-item"><a class="nav-link" href="/friends">Friends</a></li>
             <li class="nav-item"><a class="nav-link" href="/leagues">Leagues</a></li>
             <% if (user.isAdmin) { %><li class="nav-item"><a class="nav-link" href="/admin">Admin</a></li><% } %>
-            <li class="nav-item"><span class="navbar-text text-white me-3">Welcome, <%= user.username %>!</span></li>
-            <li class="nav-item"><button class="btn btn-outline-light" onclick="logout()">Logout</button></li>
+            <li class="nav-item">
+              <button class="btn btn-outline-light btn-sm" onclick="logout()">
+                <i class="bi bi-box-arrow-right"></i> Logout
+              </button>
+            </li>
           <% } else { %>
-            <li class="nav-item"><a class="nav-link" href="/leaderboard">Leaderboard</a></li>
-            <li class="nav-item"><a class="nav-link btn btn-outline-light ms-2" href="/login">Login</a></li>
-            <li class="nav-item"><a class="nav-link btn btn-success ms-2" href="/signup">Sign Up</a></li>
+            <li class="nav-item"><a class="nav-link" href="/login">Login</a></li>
+            <li class="nav-item"><a class="nav-link" href="/signup">Sign Up</a></li>
           <% } %>
         </ul>
       </div>
     </div>
   </nav>
 
-<div class="container-fluid py-3">
-  <div class="row g-3">
-    <div class="col-12">
-      <h2 class="mb-2">My Team</h2>
-      <div id="alertContainer"></div>
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-        <span class="badge bg-primary">Active GW: <span id="activeGWLabel">—</span></span>
-        <span class="badge bg-dark">Deadline: <span id="deadlineLabel">—</span></span>
-        <span id="lockStatus" class="badge">Status: <span id="lockStatusLabel">—</span></span>
-        <span class="badge bg-info text-dark">Free Transfers: <span id="freeTransfersLabel">—</span></span>
-        <span class="badge bg-secondary">Transfers This GW: <span id="transfersGWLabel">—</span></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3 mb-1">
-    <div class="col-sm-6 col-lg-4">
-      <div class="card"><div class="card-body">
-        <h6 class="card-title">Budget</h6>
-        <div class="budget-bar mb-2"><div class="budget-fill"></div></div>
-        <div class="d-flex justify-content-between small">
-          <span>Spent: <strong id="budget-spent">0</strong>M</span>
-          <span>Remaining: <strong id="budget-remaining">100</strong>M</span>
-        </div>
-      </div></div>
-    </div>
-    <div class="col-sm-6 col-lg-4">
-      <div class="card"><div class="card-body">
-        <h6 class="card-title">Total Points</h6>
-        <h3 class="text-center mb-0" id="totalPoints">0</h3>
-      </div></div>
-    </div>
-    <div class="col-sm-12 col-lg-4">
-      <div class="card"><div class="card-body">
-        <h6 class="card-title">Squad Status</h6>
-        <div class="d-flex flex-wrap gap-3 small">
-          <span>GK: <strong id="gk-count">0</strong>/2</span>
-          <span>DEF: <strong id="def-count">0</strong>/5</span>
-          <span>MID: <strong id="mid-count">0</strong>/5</span>
-          <span>FWD: <strong id="fwd-count">0</strong>/3</span>
-        </div>
-      </div></div>
-    </div>
-  </div>
-
-  <div class="row g-3">
-    <div class="col-lg-6">
-      <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h6 class="mb-0">Your Squad</h6>
-          <div class="d-flex align-items-center gap-2">
-            <div class="form-check form-switch">
-              <input class="form-check-input" type="checkbox" id="transferModeSwitch" onchange="toggleTransferMode(this.checked)">
-              <label class="form-check-label small" for="transferModeSwitch">Transfer Mode</label>
-            </div>
+  <div class="main-container">
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+      <div class="row g-2">
+        <div class="col-4 col-md-2">
+          <div class="stat-item">
+            <div class="stat-value" id="totalPoints">0</div>
+            <div class="stat-label">Points</div>
           </div>
         </div>
-        <div class="card-body" id="squadCardBody">
-          <div class="formation-container" id="formation-display">
-            <div class="text-center text-white py-5"><p>Select players to build your squad</p></div>
+        <div class="col-4 col-md-2">
+          <div class="stat-item">
+            <div class="stat-value" id="selectedCount">0/15</div>
+            <div class="stat-label">Players</div>
           </div>
-
-          <div class="row mt-3 g-2">
-            <div class="col-md-6">
-              <label class="form-label small">Captain</label>
-              <select id="captainSelect" class="form-select form-select-sm"></select>
+        </div>
+        <div class="col-4 col-md-2">
+          <div class="stat-item">
+            <div class="stat-value" id="budgetRemaining">100M</div>
+            <div class="stat-label">Bank</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-item">
+            <div class="stat-value" id="freeTransfers">1</div>
+            <div class="stat-label">Free Transfers</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-item">
+            <div class="stat-value" id="gwStatus">
+              <span class="badge bg-success">Open</span>
             </div>
-            <div class="col-md-6">
-              <label class="form-label small">Vice-Captain</label>
-              <select id="viceCaptainSelect" class="form-select form-select-sm"></select>
-            </div>
+            <div class="stat-label">GW Status</div>
           </div>
-
-          <div class="mt-3">
-            <h6 class="small">Lineup Builder</h6>
-            <div id="lineup-builder" class="small text-muted">Add players to your squad first.</div>
-          </div>
-
-          <div class="sticky-mobile-bar mt-3 d-flex flex-wrap gap-2 justify-content-between">
-            <div class="small">Selected: <strong id="selectedCountLabel">0</strong>/15</div>
-            <div class="d-flex flex-wrap gap-2">
-              <button id="saveTeamBtn" class="btn btn-primary btn-sm" onclick="saveTeam()"><i class="bi bi-save"></i> Save Team</button>
-              <button id="clearTeamBtn" class="btn btn-outline-danger btn-sm" onclick="clearTeam()"><i class="bi bi-trash"></i> Clear</button>
-              <button id="saveLineupBtn" class="btn btn-outline-secondary btn-sm" onclick="saveLineup()"><i class="bi bi-people"></i> Save Lineup</button>
-              <button id="saveCaptainsBtn" class="btn btn-outline-primary btn-sm" onclick="saveCaptains()"><i class="bi bi-person-badge"></i> Save Captains</button>
-            </div>
-          </div>
-
         </div>
       </div>
     </div>
 
-    <div class="col-lg-6">
-      <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h6 class="mb-0">Available Players</h6>
-          <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-outline-secondary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#filtersCanvas"><i class="bi bi-sliders"></i> Filters</button>
-            <div class="d-none d-lg-flex align-items-center gap-2">
-              <input class="form-control form-control-sm" id="searchInput" placeholder="Search name..." oninput="filterPlayers()" style="max-width: 180px;">
-              <select class="form-select form-select-sm" id="clubFilter" onchange="filterPlayers()" style="max-width: 180px;"><option value="">All Clubs</option></select>
-              <select class="form-select form-select-sm" id="sortFilter" onchange="filterPlayers()" style="max-width: 160px;"><option value="price">Sort by Price</option><option value="points">Sort by Points</option><option value="name">Sort by Name</option></select>
-            </div>
+    <!-- Pitch Section -->
+    <div class="pitch-wrapper">
+      <div class="pitch-header">
+        <h5 class="m-0"><i class="bi bi-people-fill"></i> My Squad</h5>
+        <div class="transfer-mode-toggle">
+          <input type="checkbox" class="form-check-input" id="transferMode" onchange="toggleTransferMode(this.checked)">
+          <label for="transferMode" class="form-check-label">Transfer Mode</label>
+        </div>
+      </div>
+
+      <div class="squad-value-bar">
+        <div class="value-labels">
+          <span>Squad Value: <strong id="squadValue">0M</strong></span>
+          <span>Budget Used: <strong id="budgetPercent">0%</strong></span>
+        </div>
+        <div class="value-progress">
+          <div class="value-fill" id="valueFill"></div>
+        </div>
+      </div>
+
+      <div class="pitch">
+        <!-- Pitch decorations -->
+        <div class="center-circle"></div>
+        <div class="penalty-box-top"></div>
+        <div class="penalty-box-bottom"></div>
+
+        <!-- Goalkeepers -->
+        <div class="formation-row" id="gk-row">
+          <div class="position-slot" data-position="GK" data-index="0" onclick="selectPosition('GK', 0)">
+            <span class="position-label">GKP</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="GK" data-index="1" onclick="selectPosition('GK', 1)">
+            <span class="position-label">GKP</span>
+            <i class="bi bi-plus-circle add-icon"></i>
           </div>
         </div>
-        <div class="card-body" id="availablePlayersCardBody">
-          <div class="d-lg-none mb-2">
-            <input class="form-control form-control-sm" id="searchInputMobile" placeholder="Search name..." oninput="filterPlayers()">
+
+        <!-- Defenders -->
+        <div class="formation-row" id="def-row">
+          <div class="position-slot" data-position="DEF" data-index="0" onclick="selectPosition('DEF', 0)">
+            <span class="position-label">DEF</span>
+            <i class="bi bi-plus-circle add-icon"></i>
           </div>
-          <ul class="nav nav-tabs small" role="tablist">
-            <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#gk-players">GK</a></li>
-            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#def-players">DEF</a></li>
-            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#mid-players">MID</a></li>
-            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#fwd-players">FWD</a></li>
-          </ul>
-          <div class="tab-content" style="max-height: 520px; overflow-y: auto;">
-            <div class="tab-pane fade show active" id="gk-players"><div class="py-3 text-muted">Loading goalkeepers...</div></div>
-            <div class="tab-pane fade" id="def-players"><div class="py-3 text-muted">Loading defenders...</div></div>
-            <div class="tab-pane fade" id="mid-players"><div class="py-3 text-muted">Loading midfielders...</div></div>
-            <div class="tab-pane fade" id="fwd-players"><div class="py-3 text-muted">Loading forwards...</div></div>
+          <div class="position-slot" data-position="DEF" data-index="1" onclick="selectPosition('DEF', 1)">
+            <span class="position-label">DEF</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="DEF" data-index="2" onclick="selectPosition('DEF', 2)">
+            <span class="position-label">DEF</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="DEF" data-index="3" onclick="selectPosition('DEF', 3)">
+            <span class="position-label">DEF</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="DEF" data-index="4" onclick="selectPosition('DEF', 4)">
+            <span class="position-label">DEF</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+        </div>
+
+        <!-- Midfielders -->
+        <div class="formation-row" id="mid-row">
+          <div class="position-slot" data-position="MID" data-index="0" onclick="selectPosition('MID', 0)">
+            <span class="position-label">MID</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="MID" data-index="1" onclick="selectPosition('MID', 1)">
+            <span class="position-label">MID</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="MID" data-index="2" onclick="selectPosition('MID', 2)">
+            <span class="position-label">MID</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="MID" data-index="3" onclick="selectPosition('MID', 3)">
+            <span class="position-label">MID</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="MID" data-index="4" onclick="selectPosition('MID', 4)">
+            <span class="position-label">MID</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+        </div>
+
+        <!-- Forwards -->
+        <div class="formation-row" id="fwd-row">
+          <div class="position-slot" data-position="FWD" data-index="0" onclick="selectPosition('FWD', 0)">
+            <span class="position-label">FWD</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="FWD" data-index="1" onclick="selectPosition('FWD', 1)">
+            <span class="position-label">FWD</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+          <div class="position-slot" data-position="FWD" data-index="2" onclick="selectPosition('FWD', 2)">
+            <span class="position-label">FWD</span>
+            <i class="bi bi-plus-circle add-icon"></i>
+          </div>
+        </div>
+
+        <!-- Bench Section -->
+        <div class="bench-section">
+          <div class="bench-label">Substitutes</div>
+          <div class="bench-row">
+            <div class="position-slot bench-slot" data-position="BENCH" data-index="0" onclick="selectPosition('BENCH', 0)">
+              <span class="position-label">SUB</span>
+              <i class="bi bi-plus-circle add-icon"></i>
+            </div>
+            <div class="position-slot bench-slot" data-position="BENCH" data-index="1" onclick="selectPosition('BENCH', 1)">
+              <span class="position-label">SUB</span>
+              <i class="bi bi-plus-circle add-icon"></i>
+            </div>
+            <div class="position-slot bench-slot" data-position="BENCH" data-index="2" onclick="selectPosition('BENCH', 2)">
+              <span class="position-label">SUB</span>
+              <i class="bi bi-plus-circle add-icon"></i>
+            </div>
+            <div class="position-slot bench-slot" data-position="BENCH" data-index="3" onclick="selectPosition('BENCH', 3)">
+              <span class="position-label">SUB</span>
+              <i class="bi bi-plus-circle add-icon"></i>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-</div>
 
-<!-- Offcanvas filters for mobile -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="filtersCanvas">
-  <div class="offcanvas-header">
-    <h6 class="offcanvas-title">Filters</h6>
-    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    <!-- Control Buttons -->
+    <div class="controls-section">
+      <div class="d-flex flex-wrap justify-content-center gap-2">
+        <button class="control-btn btn-primary" onclick="saveTeam()">
+          <i class="bi bi-save"></i> Save Team
+        </button>
+        <button class="control-btn btn-primary" onclick="saveCaptains()">
+          <i class="bi bi-star"></i> Set Captains
+        </button>
+        <button class="control-btn btn-secondary" onclick="autoComplete()">
+          <i class="bi bi-magic"></i> Auto-Complete
+        </button>
+        <button class="control-btn btn-secondary" onclick="clearTeam()">
+          <i class="bi bi-trash"></i> Clear Team
+        </button>
+      </div>
+    </div>
   </div>
-  <div class="offcanvas-body">
-    <div class="mb-2">
-      <label class="form-label small">Search</label>
-      <input class="form-control form-control-sm" id="searchInputOC" placeholder="Name..." oninput="filterPlayers()">
-    </div>
-    <div class="mb-2">
-      <label class="form-label small">Club</label>
-      <select class="form-select form-select-sm" id="clubFilterOC" onchange="filterPlayers()"><option value="">All Clubs</option></select>
-    </div>
-    <div class="mb-2">
-      <label class="form-label small">Sort</label>
-      <select class="form-select form-select-sm" id="sortFilterOC" onchange="filterPlayers()"><option value="price">Sort by Price</option><option value="points">Sort by Points</option><option value="name">Sort by Name</option></select>
-    </div>
-    <button class="btn btn-primary w-100 mt-2" data-bs-dismiss="offcanvas">Apply</button>
-  </div>
-</div>
 
-<footer class="bg-dark text-white py-4 mt-4">
-  <div class="container text-center">
-    <p>&copy; 2025 Botola Fantasy. All rights reserved.</p>
+  <!-- Player Selection Modal -->
+  <div class="player-modal" id="playerModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Select Player - <span id="modalPosition">GK</span></h5>
+        <button class="close-modal" onclick="closePlayerModal()">×</button>
+      </div>
+      <div class="modal-filters">
+        <input type="text" class="form-control form-control-sm" id="searchPlayer" placeholder="Search..." style="max-width: 200px;">
+        <select class="form-select form-select-sm" id="clubFilter" style="max-width: 150px;">
+          <option value="">All Clubs</option>
+        </select>
+        <select class="form-select form-select-sm" id="sortBy" style="max-width: 120px;">
+          <option value="price">Price</option>
+          <option value="points">Points</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+      <div class="players-list" id="playersList">
+        <!-- Players will be loaded here -->
+      </div>
+    </div>
   </div>
-</footer>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="/js/main.js"></script>
-<script src="/js/dashboard.js"></script>
+  <footer class="text-center text-white py-3 mt-5">
+    <p class="mb-0">&copy; 2025 Botola Fantasy. All rights reserved.</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/dashboard.js"></script>
 </body>
 </html>

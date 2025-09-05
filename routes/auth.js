@@ -5,6 +5,7 @@ const { authMiddleware } = require('../middleware/auth');
 const passport = require('passport');
 
 const router = express.Router();
+const JWT_SECRET = (process.env.JWT_SECRET || '').trim();
 
 // Sign up
 router.post('/signup', async (req, res) => {
@@ -15,7 +16,7 @@ router.post('/signup', async (req, res) => {
 
     const user = await User.create({ username, email, password, favoriteClub });
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
     req.session.user = { id: user._id, username: user.username, email: user.email, isAdmin: user.isAdmin };
 
     res.status(201).json({ message: 'User created', token, user: req.session.user });
@@ -33,7 +34,7 @@ router.post('/login', async (req, res) => {
     const ok = await user.comparePassword(password);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
     req.session.user = { id: user._id, username: user.username, email: user.email, isAdmin: user.isAdmin };
 
     res.json({ message: 'Login successful', token, user: req.session.user });
@@ -60,23 +61,22 @@ router.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ message: 'Logged out' }));
 });
 
-// Google OAuth
+// Google OAuth (mounted under both /api/auth/* and /auth/* via server.js)
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
 router.get('/google/callback',
   passport.authenticate('google', { session: false, failureRedirect: '/login' }),
   async (req, res) => {
     const user = req.user;
-    // Set session for server-rendered protected pages
     req.session.user = { id: user._id, username: user.username, email: user.email, isAdmin: user.isAdmin };
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
     const userPayload = JSON.stringify({ id: user._id, username: user.username, email: user.email, isAdmin: user.isAdmin });
 
     res.send(`<!doctype html><html><head><meta charset="utf-8"><title>Login</title></head>
 <body>
 <script>
-  localStorage.setItem('token', ${JSON.stringify(token)});
+  localStorage.setItem('token', '${token}');
   localStorage.setItem('user', '${userPayload.replace(/'/g, "\\'")}');
   window.location.href = '/dashboard';
 </script>

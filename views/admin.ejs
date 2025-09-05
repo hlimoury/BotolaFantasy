@@ -101,9 +101,11 @@
       <div id="clubs-section" class="admin-section" style="display:none;">
         <div class="d-flex justify-content-between mb-3">
           <h3>Clubs</h3>
+          <button class="btn btn-sm btn-success" onclick="openClubModal('create')"><i class="bi bi-plus"></i> Add Club</button>
         </div>
         <div class="row" id="clubsGrid"><div class="col-12 text-center">Loading...</div></div>
       </div>
+      
 
       <div id="matches-section" class="admin-section" style="display:none;">
         <div class="d-flex justify-content-between mb-3">
@@ -121,7 +123,6 @@
         <div class="row mt-2" id="gameweeksList"><div class="col-12 text-center">Loading...</div></div>
       </div>
 
-      <!-- NEW: Teams section -->
       <div id="teams-section" class="admin-section" style="display:none;">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h3>User Teams</h3>
@@ -255,7 +256,7 @@
   </div>
 </div>
 
-<!-- NEW: Team Modal -->
+<!-- Team Modal -->
 <div class="modal fade" id="teamModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <form class="modal-content" onsubmit="submitTeamAdminForm(event)">
@@ -301,6 +302,60 @@
     </form>
   </div>
 </div>
+
+<!-- Club Modal -->
+<div class="modal fade" id="clubModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" id="clubForm" onsubmit="submitClubForm(event)">
+      <div class="modal-header">
+        <h5 class="modal-title" id="clubModalTitle">Add Club</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="clubId">
+        <div class="mb-2">
+          <label class="form-label">API ID</label>
+          <input type="number" class="form-control" id="clubApiId" placeholder="Optional (unique)">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Name</label>
+          <input type="text" class="form-control" id="clubName" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Short Name</label>
+          <input type="text" class="form-control" id="clubShortName" placeholder="e.g., WAC">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Logo URL</label>
+          <input type="url" class="form-control" id="clubLogo" placeholder="https://...">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Stadium</label>
+          <input type="text" class="form-control" id="clubStadium">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">City</label>
+          <input type="text" class="form-control" id="clubCity">
+        </div>
+        <div class="row">
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Primary Color</label>
+            <input type="color" class="form-control form-control-color" id="clubPrimaryColor" value="#000000" title="Choose primary color">
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Secondary Color</label>
+            <input type="color" class="form-control form-control-color" id="clubSecondaryColor" value="#FFFFFF" title="Choose secondary color">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 
 <script src="/js/admin.js"></script>
 <footer class="bg-dark text-white py-4 mt-5">

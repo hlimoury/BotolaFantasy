@@ -5,9 +5,10 @@ const User = require('../models/User');
 module.exports = function initPassport() {
   passport.use(new GoogleStrategy(
     {
-      clientID: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback'
+      clientID: (process.env.GOOGLE_CLIENT_ID || '').trim(),
+      clientSecret: (process.env.GOOGLE_CLIENT_SECRET || '').trim(),
+      // On Render, set GOOGLE_CALLBACK_URL to: https://<your-service>.onrender.com/auth/google/callback
+      callbackURL: (process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback').trim()
     },
     async (_accessToken, _refreshToken, profile, done) => {
       try {

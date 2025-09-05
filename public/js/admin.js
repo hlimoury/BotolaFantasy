@@ -39,19 +39,35 @@ function switchSection(section) {
   document.querySelectorAll('.admin-section').forEach(s => s.style.display = 'none');
   const target = document.getElementById(`${section}-section`);
   if (target) target.style.display = 'block';
+
+  // Optional: refresh section-specific data
+  if (section === 'clubs') loadClubs();
+  if (section === 'players') loadPlayers();
+  if (section === 'matches') loadMatches();
+  if (section === 'gameweeks') loadGameweeks();
+  if (section === 'teams') loadTeams();
+  if (section === 'users') loadUsers();
 }
 
 async function loadOverview() {
   try {
-    const users = await (await fetch('/api/leaderboard?limit=1')).json();
-    const players = await (await fetch('/api/players')).json();
-    const gw = await (await fetch('/api/gameweeks/active')).json();
+    const [teamsRes, playersRes, gwRes] = await Promise.all([
+      fetch('/api/admin/teams', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }),
+      fetch('/api/admin/players', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }),
+      fetch('/api/admin/gameweeks/active', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+    ]);
+    const teams = await teamsRes.json();
+    const players = await playersRes.json();
+    const gw = await gwRes.json();
 
-    document.getElementById('totalUsers').textContent = users.totalPages ? users.totalPages * 20 : '—';
-    document.getElementById('totalPlayers').textContent = players.length;
+    document.getElementById('totalUsers').textContent = Array.isArray(teams) ? teams.length : '—';
+    document.getElementById('totalPlayers').textContent = Array.isArray(players) ? players.length : '—';
     document.getElementById('activeGameweek').textContent = gw?.weekNumber || '—';
+
+    const matchesRes = await fetch('/api/admin/matches', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+    const matches = await matchesRes.json();
     const today = new Date().toDateString();
-    const matchesToday = (gw?.matches || []).filter(m => new Date(m.date).toDateString() === today).length;
+    const matchesToday = (matches || []).filter(m => m.date && new Date(m.date).toDateString() === today).length;
     document.getElementById('matchesToday').textContent = matchesToday;
   } catch (e) {
     console.error('Overview load error', e);
@@ -136,24 +152,105 @@ async function loadClubs() {
   if (grid) {
     grid.innerHTML = ADMIN_CLUBS.map(c => `
       <div class="col-md-4 col-lg-3 mb-3">
-        <div class="card">
-          <div class="card-body text-center">
+        <div class="card h-100">
+          <div class="card-body text-center d-flex flex-column">
             <img src="${c.logo || ''}" onerror="this.style.display='none'" height="40" class="mb-2"/>
-            <h6>${c.name}</h6>
-            <small class="text-muted">${c.city || ''}</small>
+            <h6 class="mb-0">${c.name}</h6>
+            <small class="text-muted">${c.shortName || ''}</small>
+            <div class="mt-2">
+              <small class="text-muted d-block">${c.city || ''}</small>
+              <small class="text-muted d-block">${c.stadium || ''}</small>
+            </div>
             <div class="mt-2 d-flex justify-content-center gap-2">
-              <button class="btn btn-sm btn-primary" onclick="editClub('${c._id}', '${c.name}')">Edit</button>
+              <span class="badge" style="background:${c.primaryColor || '#000'};">&nbsp;&nbsp;</span>
+              <span class="badge" style="background:${c.secondaryColor || '#fff'};border:1px solid #ddd;">&nbsp;&nbsp;</span>
+            </div>
+            <div class="mt-auto d-flex justify-content-center gap-2 pt-3">
+              <button class="btn btn-sm btn-primary" onclick="openClubModal('edit','${c._id}')">Edit</button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteClub('${c._id}')">Delete</button>
             </div>
           </div>
         </div>
       </div>`).join('');
   }
 }
-async function editClub(id, name) {
-  const newName = prompt('Edit club name', name);
-  if (!newName || newName === name) return;
-  await fetch(`/api/admin/clubs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` }, body: JSON.stringify({ name: newName }) });
-  loadClubs();
+
+function openClubModal(mode, id) {
+  const modalEl = document.getElementById('clubModal');
+  const modal = new bootstrap.Modal(modalEl);
+  document.getElementById('clubModalTitle').textContent = mode === 'edit' ? 'Edit Club' : 'Add Club';
+
+  // Reset form
+  document.getElementById('clubForm').reset();
+  document.getElementById('clubId').value = '';
+  document.getElementById('clubApiId').value = '';
+  document.getElementById('clubPrimaryColor').value = '#000000';
+  document.getElementById('clubSecondaryColor').value = '#FFFFFF';
+
+  if (mode === 'edit' && id) {
+    const c = ADMIN_CLUBS.find(x => String(x._id) === String(id));
+    if (!c) {
+      alert('Club not found');
+      return;
+    }
+    document.getElementById('clubId').value = c._id;
+    document.getElementById('clubApiId').value = c.apiId ?? '';
+    document.getElementById('clubName').value = c.name || '';
+    document.getElementById('clubShortName').value = c.shortName || '';
+    document.getElementById('clubLogo').value = c.logo || '';
+    document.getElementById('clubStadium').value = c.stadium || '';
+    document.getElementById('clubCity').value = c.city || '';
+    document.getElementById('clubPrimaryColor').value = c.primaryColor || '#000000';
+    document.getElementById('clubSecondaryColor').value = c.secondaryColor || '#FFFFFF';
+  }
+
+  modal.show();
+}
+
+async function submitClubForm(e) {
+  e.preventDefault();
+  const id = document.getElementById('clubId').value;
+  const payload = {
+    apiId: document.getElementById('clubApiId').value ? Number(document.getElementById('clubApiId').value) : undefined,
+    name: document.getElementById('clubName').value.trim(),
+    shortName: document.getElementById('clubShortName').value.trim() || undefined,
+    logo: document.getElementById('clubLogo').value.trim() || undefined,
+    stadium: document.getElementById('clubStadium').value.trim() || undefined,
+    city: document.getElementById('clubCity').value.trim() || undefined,
+    primaryColor: document.getElementById('clubPrimaryColor').value || '#000000',
+    secondaryColor: document.getElementById('clubSecondaryColor').value || '#FFFFFF'
+  };
+  if (!payload.name) {
+    alert('Name is required');
+    return;
+  }
+
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/admin/clubs/${id}` : '/api/admin/clubs';
+
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Failed to save club');
+    return;
+  }
+  bootstrap.Modal.getInstance(document.getElementById('clubModal')).hide();
+  await loadClubs();
+}
+
+async function deleteClub(id) {
+  if (!confirm('Delete this club?')) return;
+  const res = await fetch(`/api/admin/clubs/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Failed to delete club');
+    return;
+  }
+  await loadClubs();
 }
 
 // Matches
@@ -182,6 +279,76 @@ async function loadMatches() {
         </div>
       </div>`).join('');
   }
+}
+
+function openMatchModal(mode, id) {
+  const modalEl = document.getElementById('matchModal');
+  const modal = new bootstrap.Modal(modalEl);
+  document.getElementById('matchModalTitle').textContent = mode === 'edit' ? 'Edit Match' : 'Add Match';
+  document.getElementById('matchId').value = id || '';
+  document.getElementById('matchHomeClub').innerHTML = '<option>Loading...</option>';
+  document.getElementById('matchAwayClub').innerHTML = '<option>Loading...</option>';
+  document.getElementById('matchGameweek').innerHTML = '<option value="">-- none --</option>';
+  document.getElementById('matchDate').value = '';
+  document.getElementById('matchRound').value = '';
+  document.getElementById('matchWeekNumber').value = '';
+  document.getElementById('matchStatus').value = '';
+
+  Promise.all([
+    fetch('/api/admin/clubs', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }).then(r => r.json()),
+    fetch('/api/admin/gameweeks', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }).then(r => r.json())
+  ]).then(async ([clubs, gws]) => {
+    const clubOpts = clubs.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
+    document.getElementById('matchHomeClub').innerHTML = `<option value="">-- select --</option>` + clubOpts;
+    document.getElementById('matchAwayClub').innerHTML = `<option value="">-- select --</option>` + clubOpts;
+    document.getElementById('matchGameweek').innerHTML = `<option value="">-- none --</option>` + gws.map(g => `<option value="${g._id}">GW ${g.weekNumber}</option>`).join('');
+
+    if (mode === 'edit' && id) {
+      const res = await fetch(`/api/admin/matches/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      const m = await res.json();
+      if (!res.ok) { alert(m.error || 'Failed to load match'); return; }
+      document.getElementById('matchHomeClub').value = m.homeClub?._id || '';
+      document.getElementById('matchAwayClub').value = m.awayClub?._id || '';
+      document.getElementById('matchGameweek').value = m.gameweek?._id || '';
+      document.getElementById('matchDate').value = m.date ? toLocalInputDateTime(m.date) : '';
+      document.getElementById('matchRound').value = m.round || '';
+      document.getElementById('matchWeekNumber').value = m.weekNumber || '';
+      document.getElementById('matchStatus').value = m.status || '';
+    }
+
+    modal.show();
+  });
+}
+
+async function submitMatchForm(e) {
+  e.preventDefault();
+  const id = document.getElementById('matchId').value;
+  const payload = {
+    homeClub: document.getElementById('matchHomeClub').value,
+    awayClub: document.getElementById('matchAwayClub').value,
+    gameweekId: document.getElementById('matchGameweek').value || undefined,
+    date: document.getElementById('matchDate').value ? new Date(document.getElementById('matchDate').value).toISOString() : undefined,
+    round: document.getElementById('matchRound').value || undefined,
+    weekNumber: document.getElementById('matchWeekNumber').value ? Number(document.getElementById('matchWeekNumber').value) : undefined,
+    status: document.getElementById('matchStatus').value || undefined
+  };
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/admin/matches/${id}` : '/api/admin/matches';
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Failed to save match'); return; }
+  bootstrap.Modal.getInstance(document.getElementById('matchModal')).hide();
+  await loadMatches();
+}
+
+async function deleteMatch(id) {
+  if (!confirm('Delete match?')) return;
+  await fetch(`/api/admin/matches/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+  await loadMatches();
 }
 
 // Gameweeks
@@ -251,11 +418,8 @@ async function submitGWForm(e) {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
     body: JSON.stringify(payload)
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    alert(data.error || 'Failed to save gameweek');
-    return;
-  }
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Failed to save gameweek'); return; }
   bootstrap.Modal.getInstance(document.getElementById('gwModal')).hide();
   await loadGameweeks();
 }
@@ -265,10 +429,163 @@ async function deleteGW(id) {
   await loadGameweeks();
 }
 
-// Team Performances Modal logic exists (same as before) ...
-// ... (keep your existing performances modal code below unchanged) ...
-// The earlier large block for performances remains, omitted for brevity in this comment.
-// Make sure you keep all functions openPerfModal, buildPerfPlayerOptions, addPerfRowFromSelect, submitPerfForm, etc.
+// Performances modal & helpers
+function openPerfModal(matchId) {
+  const modalEl = document.getElementById('perfModal');
+  const modal = new bootstrap.Modal(modalEl);
+  document.getElementById('perfMatchId').value = matchId;
+  document.getElementById('perfHomeScore').value = '';
+  document.getElementById('perfAwayScore').value = '';
+  document.getElementById('perfStatus').value = '';
+  document.getElementById('perfTbody').innerHTML = '';
+  document.getElementById('perfPlayerSelect').innerHTML = '<option>Loading...</option>';
+  fetch(`/api/admin/matches/${matchId}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+    .then(r => r.json())
+    .then(m => {
+      if (!m || m.error) return alert(m.error || 'Failed to load match');
+      document.getElementById('perfHomeScore').value = m.homeScore ?? '';
+      document.getElementById('perfAwayScore').value = m.awayScore ?? '';
+      document.getElementById('perfStatus').value = m.status || '';
+      const opts = ADMIN_PLAYERS
+        .filter(p => String(p.club?._id) === String(m.homeClub?._id) || String(p.club?._id) === String(m.awayClub?._id))
+        .map(p => `<option value="${p._id}">${p.name} — ${p.position} — ${p.club?.name || ''}</option>`).join('');
+      document.getElementById('perfPlayerSelect').innerHTML = `<option value="">-- select player --</option>` + opts;
+      if (Array.isArray(m.playerPerformances) && m.playerPerformances.length) {
+        for (const perf of m.playerPerformances) {
+          addPerfRow(prefillPerformanceRow(perf));
+        }
+      }
+      modal.show();
+    }).catch(err => { console.error(err); alert('Error loading match'); });
+}
+
+function prefillPerformanceRow(perf) {
+  return {
+    playerId: perf.player?._id || perf.player,
+    minutesPlayed: perf.minutesPlayed || 0,
+    goals: perf.goals || 0,
+    assists: perf.assists || 0,
+    conceded: perf.conceded || 0,
+    cleanSheet: perf.cleanSheet ? true : false,
+    yellowCard: perf.yellowCard ? true : false,
+    redCard: perf.redCard ? true : false,
+    saves: perf.saves || 0,
+    penaltiesSaved: perf.penaltiesSaved || 0,
+    penaltiesMissed: perf.penaltiesMissed || 0,
+    ownGoals: perf.ownGoals || 0
+  };
+}
+
+function buildPerfPlayerOptions() {
+  return ADMIN_PLAYERS.map(p => `<option value="${p._id}">${p.name} — ${p.position} — ${p.club?.name || ''}</option>`).join('');
+}
+
+function addPerfRowFromSelect() {
+  const sel = document.getElementById('perfPlayerSelect');
+  const pid = sel.value;
+  if (!pid) return;
+  const p = ADMIN_PLAYERS.find(x => String(x._id) === String(pid));
+  addPerfRow({
+    playerId: pid,
+    minutesPlayed: 90,
+    goals: 0,
+    assists: 0,
+    conceded: 0,
+    cleanSheet: false,
+    yellowCard: false,
+    redCard: false,
+    saves: 0,
+    penaltiesSaved: 0,
+    penaltiesMissed: 0,
+    ownGoals: 0,
+    name: p ? p.name : ''
+  });
+}
+
+function addPerfRow(data = {}) {
+  const tbody = document.getElementById('perfTbody');
+  const tr = document.createElement('tr');
+  tr.dataset.playerId = data.playerId || '';
+  tr.innerHTML = `
+    <td style="min-width:180px;">
+      <select class="form-select form-select-sm perf-player-select" onchange="onPerfPlayerChange(this)">
+        <option value="">-- select player --</option>
+        ${buildPerfPlayerOptions()}
+      </select>
+    </td>
+    <td><input type="number" class="form-control form-control-sm perf-min" value="${data.minutesPlayed || 0}"></td>
+    <td><input type="number" class="form-control form-control-sm perf-goals" value="${data.goals || 0}"></td>
+    <td><input type="number" class="form-control form-control-sm perf-assists" value="${data.assists || 0}"></td>
+    <td><input type="number" class="form-control form-control-sm perf-conceded" value="${data.conceded || 0}"></td>
+    <td><input type="checkbox" class="form-check-input perf-cs" ${data.cleanSheet ? 'checked' : ''}></td>
+    <td><input type="checkbox" class="form-check-input perf-yc" ${data.yellowCard ? 'checked' : ''}></td>
+    <td><input type="checkbox" class="form-check-input perf-rc" ${data.redCard ? 'checked' : ''}></td>
+    <td><input type="number" class="form-control form-control-sm perf-saves" value="${data.saves || 0}"></td>
+    <td><input type="number" class="form-control form-control-sm perf-ps" value="${data.penaltiesSaved || 0}"></td>
+    <td><input type="number" class="form-control form-control-sm perf-pm" value="${data.penaltiesMissed || 0}"></td>
+    <td><input type="number" class="form-control form-control-sm perf-og" value="${data.ownGoals || 0}"></td>
+    <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()">Remove</button></td>
+  `;
+  tbody.appendChild(tr);
+  if (data.playerId) {
+    const sel = tr.querySelector('.perf-player-select');
+    if (sel) sel.value = data.playerId;
+  }
+}
+
+function onPerfPlayerChange(sel) {
+  const val = sel.value;
+  if (!val) return;
+  const rows = Array.from(document.querySelectorAll('#perfTbody tr'));
+  const ids = rows.map(r => r.querySelector('.perf-player-select')?.value).filter(Boolean);
+  const dup = ids.filter(i => i === val);
+  if (dup.length > 1) {
+    alert('Player already added in another row');
+    sel.value = '';
+  }
+}
+
+async function submitPerfForm(e) {
+  e.preventDefault();
+  const matchId = document.getElementById('perfMatchId').value;
+  const homeScore = document.getElementById('perfHomeScore').value !== '' ? Number(document.getElementById('perfHomeScore').value) : undefined;
+  const awayScore = document.getElementById('perfAwayScore').value !== '' ? Number(document.getElementById('perfAwayScore').value) : undefined;
+  const status = document.getElementById('perfStatus').value || undefined;
+
+  const rows = Array.from(document.querySelectorAll('#perfTbody tr'));
+  const perfArr = [];
+  for (const r of rows) {
+    const playerId = r.querySelector('.perf-player-select')?.value;
+    if (!playerId) continue;
+    perfArr.push({
+      player: playerId,
+      minutesPlayed: Number(r.querySelector('.perf-min')?.value || 0),
+      goals: Number(r.querySelector('.perf-goals')?.value || 0),
+      assists: Number(r.querySelector('.perf-assists')?.value || 0),
+      conceded: Number(r.querySelector('.perf-conceded')?.value || 0),
+      cleanSheet: !!r.querySelector('.perf-cs')?.checked,
+      yellowCard: !!r.querySelector('.perf-yc')?.checked,
+      redCard: !!r.querySelector('.perf-rc')?.checked,
+      saves: Number(r.querySelector('.perf-saves')?.value || 0),
+      penaltiesSaved: Number(r.querySelector('.perf-ps')?.value || 0),
+      penaltiesMissed: Number(r.querySelector('.perf-pm')?.value || 0),
+      ownGoals: Number(r.querySelector('.perf-og')?.value || 0)
+    });
+  }
+
+  const payload = { homeScore, awayScore, status, playerPerformances: perfArr };
+  const res = await fetch(`/api/admin/matches/${matchId}/results`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Failed to save results'); return; }
+  bootstrap.Modal.getInstance(document.getElementById('perfModal')).hide();
+  await loadMatches();
+  await loadGameweeks();
+  await loadPlayers();
+}
 
 // Users
 async function loadUsers() {
@@ -287,7 +604,7 @@ async function loadUsers() {
   }
 }
 
-// ========== NEW: Teams (Admin) ==========
+// Teams (admin)
 async function loadTeams() {
   const res = await fetch('/api/admin/teams', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
   ADMIN_TEAMS = await res.json();
@@ -334,7 +651,7 @@ async function openTeamModal(userId) {
 
   const list = document.getElementById('teamPlayersList');
   list.innerHTML = (u.team || []).map(s => `
-    <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-2">
+    <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-2 player-row" data-player-id="${s.player?._id}">
       <div>
         <strong>${s.player?.name || 'Unknown'}</strong> <span class="badge bg-secondary">${s.player?.position || ''}</span>
         <div class="text-muted small">${s.player?.club?.name || ''}</div>
@@ -342,7 +659,7 @@ async function openTeamModal(userId) {
         ${s.viceCaptain ? '<span class="badge bg-info text-dark">VC</span>' : ''}
       </div>
       <div class="d-flex gap-2">
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="adminRemovePlayerFromUser('${s.player?._id}')"><i class="bi bi-trash"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.player-row').remove()"><i class="bi bi-trash"></i></button>
       </div>
     </div>
   `).join('');
@@ -351,39 +668,26 @@ async function openTeamModal(userId) {
   modal.show();
 }
 
-// Admin edit helpers (stored locally during modal open)
-let ADMIN_EDIT_TEAM = [];
-function getCurrentModalTeamIds() {
-  const list = document.getElementById('teamPlayersList').querySelectorAll('.d-flex.border');
-  // quick parse using data attributes would be better; for simplicity we re-fetch detail when saving
-  return null;
-}
-function adminRemovePlayerFromUser(playerId) {
-  const row = Array.from(document.querySelectorAll('#teamPlayersList .d-flex.border')).find(r => r.innerHTML.includes(playerId));
-  if (row) row.remove();
-}
 async function adminAddPlayerToUser() {
   const input = document.getElementById('addPlayerIdInput');
   const id = input.value.trim();
   if (!id) return;
-  // simple append card; actual validation happens on save
   const res = await fetch(`/api/players/${id}`);
   const p = await res.json();
-  if (!res.ok) { alert('Invalid player ID'); return; }
+  if (!res.ok) { alert(p.error || 'Invalid player ID'); return; }
   const list = document.getElementById('teamPlayersList');
   const div = document.createElement('div');
-  div.className = 'd-flex align-items-center justify-content-between border rounded p-2 mb-2';
+  div.className = 'd-flex align-items-center justify-content-between border rounded p-2 mb-2 player-row';
+  div.dataset.playerId = p._id;
   div.innerHTML = `
     <div>
       <strong>${p.name}</strong> <span class="badge bg-secondary">${p.position}</span>
       <div class="text-muted small">${p.club?.name || ''}</div>
     </div>
     <div class="d-flex gap-2">
-      <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.d-flex.border').remove()"><i class="bi bi-trash"></i></button>
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.player-row').remove()"><i class="bi bi-trash"></i></button>
     </div>
   `;
-  // embed hidden id
-  div.dataset.playerId = p._id;
   list.appendChild(div);
   input.value = '';
 }
@@ -394,8 +698,7 @@ async function submitTeamAdminForm(e) {
   const freeTransfers = parseInt(document.getElementById('teamFreeTransfers').value || '0', 10);
   const budget = parseFloat(document.getElementById('teamBudget').value || '0');
 
-  // Collect 15 ids from the DOM
-  const ids = Array.from(document.querySelectorAll('#teamPlayersList .d-flex.border')).map(el => el.dataset.playerId).filter(Boolean);
+  const ids = Array.from(document.querySelectorAll('#teamPlayersList .player-row')).map(el => el.dataset.playerId).filter(Boolean);
   if (ids.length && ids.length !== 15) {
     if (!confirm(`Team has ${ids.length} players (not 15). Save anyway?`)) return;
   }
@@ -414,6 +717,7 @@ async function submitTeamAdminForm(e) {
   bootstrap.Modal.getInstance(document.getElementById('teamModal')).hide();
   await loadTeams();
 }
+
 async function clearUserTeam(userId) {
   if (!confirm('Clear this user team?')) return;
   const res = await fetch(`/api/admin/teams/${userId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
