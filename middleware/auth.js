@@ -8,7 +8,7 @@ const authMiddleware = async (req, res, next) => {
     const auth = req.header('Authorization') || '';
     if (!auth.toLowerCase().startsWith('bearer ')) throw new Error('Missing token');
     let token = auth.replace(/^Bearer\s+/i, '').trim();
-    token = token.replace(/^"|"$/g, '');
+    token = token.replace(/^"|"$/g, ''); // strip accidental quotes
     if (!token) throw new Error('Missing token');
 
     const decoded = jwt.verify(token, JWT_SECRET);

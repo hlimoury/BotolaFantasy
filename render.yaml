@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: botola-fantasy
+    name: botolafantasy
     env: node
     plan: free
     buildCommand: 'npm ci'

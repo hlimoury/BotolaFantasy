@@ -61,7 +61,7 @@ router.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ message: 'Logged out' }));
 });
 
-// Google OAuth (mounted under both /api/auth/* and /auth/* via server.js)
+// Google OAuth (works for /api/auth/* and /auth/* via server mounts)
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
 router.get('/google/callback',

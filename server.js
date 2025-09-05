@@ -35,24 +35,24 @@ connectDB();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// For Render/Proxies: trust proxy so secure cookies work behind HTTPS
+// Trust proxy for HTTPS cookies on Render
 if (isProd) app.set('trust proxy', 1);
 
 // Middleware
-app.use(cors()); // keep open; same-origin front-end calls
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(morgan('dev'));
 
-// Sessions for SSR pages
+// Sessions (for SSR pages)
 app.use(
   session({
     secret: (process.env.SESSION_SECRET || '').trim(),
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: isProd,        // HTTPS on Render
+      secure: isProd,
       httpOnly: true,
       sameSite: 'lax',
       maxAge: 1000 * 60 * 60 * 24
@@ -60,7 +60,7 @@ app.use(
   })
 );
 
-// Passport (session: false for OAuth strategy, but we still init)
+// Passport (session: false, but init)
 app.use(passport.initialize());
 
 // Attach user to views
@@ -84,7 +84,7 @@ app.use('/api/clubs', publicClubsRoutes);
 app.use('/api/friends', friendsRoutes);
 app.use('/api/leagues', leaguesRoutes);
 
-// ALSO mount at /auth to match GOOGLE_CALLBACK_URL like https://your-app.onrender.com/auth/google/callback
+// Also mount auth at /auth for Google callback on Render
 app.use('/auth', authRoutes);
 
 // Pages
