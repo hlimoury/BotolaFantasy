@@ -355,6 +355,80 @@
     </form>
   </div>
 </div>
+<!-- Player Modal (replace your existing Player Modal block) -->
+<div class="modal fade" id="playerModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" id="playerForm" onsubmit="submitPlayerForm(event)">
+      <div class="modal-header">
+        <h5 class="modal-title" id="playerModalTitle">Add Player</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="playerId">
+
+        <div class="mb-3">
+          <label class="form-label">Name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="playerName" required>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Position <span class="text-danger">*</span></label>
+          <select class="form-select" id="playerPosition" required>
+            <option value="">-- Select Position --</option>
+            <option value="GK">Goalkeeper (GK)</option>
+            <option value="DEF">Defender (DEF)</option>
+            <option value="MID">Midfielder (MID)</option>
+            <option value="FWD">Forward (FWD)</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Club <span class="text-danger">*</span></label>
+          <select class="form-select" id="playerClub" required>
+            <option value="">-- Select Club --</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Price (M) <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="playerPrice" min="3" max="15" step="0.5" value="5" required>
+          </div>
+
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Jersey Number</label>
+            <input type="number" class="form-control" id="playerJerseyNumber" min="1" max="99">
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">API ID</label>
+          <input type="number" class="form-control" id="playerApiId" placeholder="Optional">
+          <small class="text-muted">Used for API syncing if available</small>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Photo URL</label>
+          <input type="url" class="form-control" id="playerPhoto" placeholder="https://...">
+        </div>
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="playerIsActive" checked>
+          <label class="form-check-label" for="playerIsActive">
+            Active (available for selection)
+          </label>
+        </div>
+
+        <!-- Note: No editable stats/points here. They are handled via Match Performances. -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Player</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 
 
 <script src="/js/admin.js"></script>

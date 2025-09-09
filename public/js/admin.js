@@ -103,31 +103,49 @@ async function recalculateAll() {
   const data = await res.json();
   appendLog(data.message);
 }
-
 // Players
 async function loadPlayers() {
-  const res = await fetch('/api/admin/players', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+  const res = await fetch('/api/admin/players', {
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+  });
   ADMIN_PLAYERS = await res.json();
+
   const tbody = document.getElementById('playersTable');
-  if (tbody) {
-    tbody.innerHTML = ADMIN_PLAYERS.map(p => `
-      <tr>
-        <td>${p.name}</td>
-        <td><span class="player-position position-${p.position}">${p.position}</span></td>
-        <td>${p.club?.name || 'N/A'}</td>
-        <td><input type="number" class="form-control form-control-sm" value="${p.price}" min="1" step="0.5" onchange="updatePlayer('${p._id}', {price: parseFloat(this.value)})"></td>
-        <td>${p.totalPoints ?? 0}</td>
-        <td>
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" ${p.isActive ? 'checked' : ''} onchange="updatePlayer('${p._id}', {isActive: this.checked})">
-          </div>
-        </td>
-        <td class="d-flex gap-2">
-          <button class="btn btn-sm btn-danger" onclick="deletePlayer('${p._id}')"><i class="bi bi-trash"></i></button>
-        </td>
-      </tr>`).join('');
+  if (!tbody) return;
+
+  if (!Array.isArray(ADMIN_PLAYERS) || ADMIN_PLAYERS.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No players yet</td></tr>`;
+    return;
   }
+
+  tbody.innerHTML = ADMIN_PLAYERS.map(p => `
+    <tr>
+      <td>${p.name}</td>
+      <td><span class="player-position position-${p.position}">${p.position || ''}</span></td>
+      <td>${p.club?.name || 'N/A'}</td>
+      <td>
+        <input type="number" class="form-control form-control-sm" value="${p.price ?? 0}" min="1" step="0.5"
+               onchange="updatePlayer('${p._id}', {price: parseFloat(this.value)})">
+      </td>
+      <td>${p.totalPoints ?? 0}</td>
+      <td>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" ${p.isActive ? 'checked' : ''}
+                 onchange="updatePlayer('${p._id}', {isActive: this.checked})">
+        </div>
+      </td>
+      <td class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="openPlayerEdit('${p._id}')">
+          <i class="bi bi-pencil"></i>
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="deletePlayer('${p._id}')">
+          <i class="bi bi-trash"></i>
+        </button>
+      </td>
+    </tr>
+  `).join('');
 }
+
 async function updatePlayer(id, payload) {
   await fetch(`/api/admin/players/${id}`, {
     method: 'PUT',
@@ -135,13 +153,126 @@ async function updatePlayer(id, payload) {
     body: JSON.stringify(payload)
   });
 }
+
 async function deletePlayer(id) {
   if (!confirm('Delete player?')) return;
-  await fetch(`/api/admin/players/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
-  loadPlayers();
+  const res = await fetch(`/api/admin/players/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+  });
+  if (res.ok) {
+    loadPlayers();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || 'Failed to delete player');
+  }
 }
-function openPlayerCreate() {
-  alert('Tip: Use API Players or add players via database/temporary tool. Inline player create UI can be added similarly.');
+
+async function populatePlayerClubOptions(selectedId = '') {
+  try {
+    if (!Array.isArray(ADMIN_CLUBS) || ADMIN_CLUBS.length === 0) {
+      const res = await fetch('/api/admin/clubs', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      ADMIN_CLUBS = await res.json();
+    }
+    const sel = document.getElementById('playerClub');
+    sel.innerHTML = `<option value="">-- Select Club --</option>` +
+      ADMIN_CLUBS.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
+    if (selectedId) sel.value = selectedId;
+  } catch (e) {
+    console.error('populatePlayerClubOptions error', e);
+  }
+}
+
+function resetPlayerForm() {
+  const form = document.getElementById('playerForm');
+  if (form) form.reset();
+  document.getElementById('playerId').value = '';
+  document.getElementById('playerPrice').value = 5;
+  document.getElementById('playerIsActive').checked = true;
+}
+
+async function openPlayerCreate() {
+  resetPlayerForm();
+  document.getElementById('playerModalTitle').textContent = 'Add Player';
+  await populatePlayerClubOptions();
+  const modal = new bootstrap.Modal(document.getElementById('playerModal'));
+  modal.show();
+}
+
+async function openPlayerEdit(id) {
+  resetPlayerForm();
+  document.getElementById('playerModalTitle').textContent = 'Edit Player';
+  await populatePlayerClubOptions();
+
+  try {
+    const res = await fetch(`/api/admin/players/${id}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    });
+    const p = await res.json();
+    if (!res.ok) {
+      alert(p.error || 'Failed to load player');
+      return;
+    }
+
+    document.getElementById('playerId').value = p._id;
+    document.getElementById('playerName').value = p.name || '';
+    document.getElementById('playerPosition').value = p.position || '';
+    document.getElementById('playerClub').value = p.club?._id || p.club || '';
+    document.getElementById('playerPrice').value = p.price ?? 5;
+    document.getElementById('playerJerseyNumber').value = p.jerseyNumber ?? '';
+    document.getElementById('playerApiId').value = p.apiId ?? '';
+    document.getElementById('playerPhoto').value = p.photo || p.photoUrl || '';
+    document.getElementById('playerIsActive').checked = !!p.isActive;
+
+    const modal = new bootstrap.Modal(document.getElementById('playerModal'));
+    modal.show();
+  } catch (e) {
+    console.error(e);
+    alert('Error loading player');
+  }
+}
+
+async function submitPlayerForm(e) {
+  e.preventDefault();
+  const id = document.getElementById('playerId').value.trim();
+
+  const payload = {
+    name: document.getElementById('playerName').value.trim(),
+    position: document.getElementById('playerPosition').value,
+    club: document.getElementById('playerClub').value || undefined,
+    price: parseFloat(document.getElementById('playerPrice').value || '0'),
+    jerseyNumber: document.getElementById('playerJerseyNumber').value ? parseInt(document.getElementById('playerJerseyNumber').value, 10) : undefined,
+    apiId: document.getElementById('playerApiId').value ? parseInt(document.getElementById('playerApiId').value, 10) : undefined,
+    photo: document.getElementById('playerPhoto').value.trim() || undefined,
+    isActive: !!document.getElementById('playerIsActive').checked
+    // Note: No stats/totalPoints in payload. They are maintained via match performances.
+  };
+
+  if (!payload.name || !payload.position || !payload.club) {
+    alert('Name, Position and Club are required');
+    return;
+  }
+
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/admin/players/${id}` : '/api/admin/players';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to save player');
+      return;
+    }
+    bootstrap.Modal.getInstance(document.getElementById('playerModal')).hide();
+    await loadPlayers();
+  } catch (e) {
+    console.error(e);
+    alert('Error saving player');
+  }
 }
 
 // Clubs
