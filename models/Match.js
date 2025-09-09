@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const matchSchema = new mongoose.Schema({
-  apiFixtureId: { type: Number, index: true, unique: true },
+  apiFixtureId: { type: Number }, // no inline index here
   round: { type: String }, // e.g., "Regular Season - 10"
   weekNumber: { type: Number }, // parsed round number
   homeClub: { type: mongoose.Schema.Types.ObjectId, ref: 'Club', required: true },
@@ -31,5 +31,15 @@ const matchSchema = new mongoose.Schema({
     }
   ]
 });
+
+// Partial-unique index: only enforce uniqueness for positive apiFixtureId values
+matchSchema.index(
+  { apiFixtureId: 1 },
+  {
+    name: 'uniq_apiFixtureId_when_set',
+    unique: true,
+    partialFilterExpression: { apiFixtureId: { $gt: 0 } }
+  }
+);
 
 module.exports = mongoose.model('Match', matchSchema);

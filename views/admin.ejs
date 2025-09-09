@@ -76,6 +76,7 @@
       <div id="sync-section" class="admin-section" style="display:none;">
         <h3>API Sync <small class="text-muted">(optional)</small></h3>
         <div class="d-flex flex-wrap gap-2 mb-3">
+          <button class="btn btn-outline-warning" onclick="fixMatchIndex()">Fix Match Index</button>
           <button class="btn btn-outline-primary" onclick="triggerSync('clubs')">Sync Clubs</button>
           <button class="btn btn-outline-primary" onclick="triggerSync('players')">Sync Players</button>
           <button class="btn btn-outline-primary" onclick="triggerSync('fixtures')">Sync Fixtures & Gameweeks</button>
@@ -193,6 +194,10 @@
         <div class="mb-2"><label class="form-label">Round Label</label><input type="text" id="matchRound" class="form-control" placeholder="Regular Season - N"></div>
         <div class="mb-2"><label class="form-label">Week Number</label><input type="number" id="matchWeekNumber" class="form-control" placeholder="Optional"></div>
         <div class="mb-2"><label class="form-label">Status</label><input type="text" id="matchStatus" class="form-control" placeholder="NS, FT, PST..."></div>
+        <div class="mb-2">
+          <label class="form-label">API Fixture ID (optional)</label>
+          <input type="number" id="matchApiFixtureId" class="form-control" placeholder="e.g., 1039284">
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -201,6 +206,7 @@
     </form>
   </div>
 </div>
+
 
 <!-- Performances Modal -->
 <div class="modal fade" id="perfModal" tabindex="-1">

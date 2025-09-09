@@ -424,6 +424,7 @@ function openMatchModal(mode, id) {
   document.getElementById('matchRound').value = '';
   document.getElementById('matchWeekNumber').value = '';
   document.getElementById('matchStatus').value = '';
+  document.getElementById('matchApiFixtureId').value = '';
 
   Promise.all([
     fetch('/api/admin/clubs', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }).then(r => r.json()),
@@ -445,6 +446,7 @@ function openMatchModal(mode, id) {
       document.getElementById('matchRound').value = m.round || '';
       document.getElementById('matchWeekNumber').value = m.weekNumber || '';
       document.getElementById('matchStatus').value = m.status || '';
+      document.getElementById('matchApiFixtureId').value = (typeof m.apiFixtureId === 'number' ? m.apiFixtureId : '') || '';
     }
 
     modal.show();
@@ -454,6 +456,8 @@ function openMatchModal(mode, id) {
 async function submitMatchForm(e) {
   e.preventDefault();
   const id = document.getElementById('matchId').value;
+  const apiFixtureIdVal = document.getElementById('matchApiFixtureId').value;
+
   const payload = {
     homeClub: document.getElementById('matchHomeClub').value,
     awayClub: document.getElementById('matchAwayClub').value,
@@ -463,6 +467,11 @@ async function submitMatchForm(e) {
     weekNumber: document.getElementById('matchWeekNumber').value ? Number(document.getElementById('matchWeekNumber').value) : undefined,
     status: document.getElementById('matchStatus').value || undefined
   };
+
+  if (apiFixtureIdVal !== '') {
+    payload.apiFixtureId = Number(apiFixtureIdVal);
+  }
+
   const method = id ? 'PUT' : 'POST';
   const url = id ? `/api/admin/matches/${id}` : '/api/admin/matches';
   const res = await fetch(url, {
@@ -476,11 +485,30 @@ async function submitMatchForm(e) {
   await loadMatches();
 }
 
+
 async function deleteMatch(id) {
   if (!confirm('Delete match?')) return;
   await fetch(`/api/admin/matches/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
   await loadMatches();
 }
+
+async function fixMatchIndex() {
+  appendLog('Fixing Match apiFixtureId index...');
+  const res = await fetch('/api/admin/maintenance/fix-match-apiFixtureId-index', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    appendLog(`Error: ${data.error || 'Failed to fix index'}`);
+    alert(data.error || 'Failed to fix index');
+    return;
+  }
+  appendLog(data.message);
+  alert('Match apiFixtureId index fixed.');
+}
+
+
 
 // Gameweeks
 async function loadGameweeks() {

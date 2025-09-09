@@ -104,27 +104,60 @@ router.put('/gameweeks/:id/activate', async (req, res) => {
     res.json(gw);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 // CRUD: Matches
-router.get('/matches', async (_req, res) => { try { const matches = await Match.find().sort({ date: -1 }).populate('homeClub awayClub gameweek'); res.json(matches); } catch (e) { res.status(500).json({ error: e.message }); }});
-router.get('/matches/:id', async (req, res) => { try { const m = await Match.findById(req.params.id).populate('homeClub awayClub gameweek').populate({ path: 'playerPerformances.player', select: 'name club position' }); if (!m) return res.status(404).json({ error: 'Match not found' }); res.json(m); } catch (e) { res.status(500).json({ error: e.message }); }});
+router.get('/matches', async (_req, res) => { 
+  try { 
+    const matches = await Match.find().sort({ date: -1 }).populate('homeClub awayClub gameweek'); 
+    res.json(matches); 
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/matches/:id', async (req, res) => { 
+  try { 
+    const m = await Match.findById(req.params.id)
+      .populate('homeClub awayClub gameweek')
+      .populate({ path: 'playerPerformances.player', select: 'name club position' });
+    if (!m) return res.status(404).json({ error: 'Match not found' }); 
+    res.json(m); 
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.post('/matches', async (req, res) => {
   try {
     const { homeClub, awayClub, date, status, round, weekNumber, gameweekId, apiFixtureId } = req.body;
+
     const m = new Match({
-      homeClub, awayClub, date: new Date(date), status: status || 'NS', round: round || (weekNumber ? `Regular Season - ${weekNumber}` : undefined),
-      weekNumber: weekNumber || undefined, isCompleted: false, apiFixtureId: apiFixtureId || undefined
+      homeClub,
+      awayClub,
+      date: new Date(date),
+      status: status || 'NS',
+      round: round || (weekNumber ? `Regular Season - ${weekNumber}` : undefined),
+      weekNumber: weekNumber || undefined,
+      isCompleted: false
     });
+
     if (gameweekId) m.gameweek = gameweekId;
+
+    // Only set apiFixtureId if provided and not empty
+    if (apiFixtureId !== undefined && apiFixtureId !== null && apiFixtureId !== '') {
+      m.apiFixtureId = Number(apiFixtureId);
+    }
+
     await m.save();
-    if (gameweekId) await Gameweek.findByIdAndUpdate(gameweekId, { $addToSet: { matches: m._id } });
+
+    if (gameweekId) {
+      await Gameweek.findByIdAndUpdate(gameweekId, { $addToSet: { matches: m._id } });
+    }
+
     res.status(201).json(m);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
 router.put('/matches/:id', async (req, res) => {
   try {
     const payload = { ...req.body };
     if (payload.date) payload.date = new Date(payload.date);
+
     const existing = await Match.findById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Match not found' });
 
@@ -133,13 +166,25 @@ router.put('/matches/:id', async (req, res) => {
       await Gameweek.findByIdAndUpdate(payload.gameweekId, { $addToSet: { matches: existing._id } });
       existing.gameweek = payload.gameweekId;
     }
-    ['homeClub', 'awayClub', 'status', 'round', 'weekNumber', 'homeScore', 'awayScore', 'date', 'apiFixtureId'].forEach(f => {
+
+    ['homeClub', 'awayClub', 'status', 'round', 'weekNumber', 'homeScore', 'awayScore', 'date'].forEach(f => {
       if (payload[f] !== undefined) existing[f] = payload[f];
     });
+
+    // Handle apiFixtureId separately and allow clearing it
+    if (payload.apiFixtureId !== undefined) {
+      if (payload.apiFixtureId === '' || payload.apiFixtureId === null) {
+        existing.apiFixtureId = undefined;
+      } else {
+        existing.apiFixtureId = Number(payload.apiFixtureId);
+      }
+    }
+
     await existing.save();
     res.json(existing);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
 router.delete('/matches/:id', async (req, res) => {
   try {
     const m = await Match.findById(req.params.id);
@@ -149,6 +194,38 @@ router.delete('/matches/:id', async (req, res) => {
     res.json({ message: 'Match deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Maintenance: fix Match.apiFixtureId index (make it partial-unique, supported on your MongoDB)
+router.post('/maintenance/fix-match-apiFixtureId-index', async (_req, res) => {
+  try {
+    // 1) Clean bad values (null) so they don't get indexed
+    await Match.updateMany({ apiFixtureId: null }, { $unset: { apiFixtureId: "" } });
+
+    const coll = Match.collection;
+
+    // 2) Drop any existing apiFixtureId indexes (unique or not, partial or not)
+    const indexes = await coll.indexes();
+    const toDrop = indexes.filter(i => i.key && i.key.apiFixtureId === 1);
+    for (const idx of toDrop) {
+      await coll.dropIndex(idx.name);
+    }
+
+    // 3) Create the correct partial-unique index using a supported predicate
+    await coll.createIndex(
+      { apiFixtureId: 1 },
+      {
+        name: 'uniq_apiFixtureId_when_set',
+        unique: true,
+        partialFilterExpression: { apiFixtureId: { $gt: 0 } }
+      }
+    );
+
+    res.json({ message: 'Match apiFixtureId index fixed (partial-unique for positive values).' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 
 // Results & Performances (manual or API)
 router.post('/matches/:id/results', async (req, res) => {
