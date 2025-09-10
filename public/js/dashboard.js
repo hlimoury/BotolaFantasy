@@ -579,6 +579,8 @@ function toggleTransferMode(enabled) {
 }
 
 // Save team
+// Replace your saveTeam function with this fixed version
+// Replace the saveTeam function in dashboard.js:
 async function saveTeam() {
   if (selectedPlayers.length !== 15) {
     alert('You must select exactly 15 players');
@@ -588,14 +590,12 @@ async function saveTeam() {
   try {
     const token = localStorage.getItem('token');
     
-    // Create team array - backend expects array of objects with player, captain, viceCaptain
+    // Create team array with current positions preserved
     const team = selectedPlayers.map(p => ({
       player: p._id,
       captain: p._id === captainId,
       viceCaptain: p._id === viceCaptainId
     }));
-    
-    console.log('Sending team data:', team); // Debug log
     
     const response = await fetch('/api/teams/save', {
       method: 'POST',
@@ -608,57 +608,72 @@ async function saveTeam() {
     
     if (response.ok) {
       const result = await response.json();
-      alert('Team saved successfully!');
       
-      // Reload team data to sync with backend
-      await loadUserTeam();
+      // Only save lineup if it wasn't preserved on backend
+      if (!result.lineupPreserved) {
+        await saveLineupAfterTeamSave();
+        alert('Team saved and lineup positions set!');
+      } else {
+        alert('Team saved successfully!');
+      }
+      
     } else {
       const error = await response.json();
-      console.error('Save team error:', error);
-      alert(error.error || error.message || 'Failed to save team');
+      alert(error.error || 'Failed to save team');
     }
   } catch (error) {
     console.error('Error saving team:', error);
     alert('Failed to save team: ' + error.message);
   }
-
-// Set captains
-function saveCaptains() {
-  if (selectedPlayers.length === 0) {
-    alert('Add players to your team first');
-    return;
-  }
-  
-  // Simple captain selection - you might want to create a modal for this
-  const captainName = prompt('Enter captain player name:');
-  if (!captainName) return;
-  
-  const captain = selectedPlayers.find(p => 
-    p.name.toLowerCase().includes(captainName.toLowerCase())
-  );
-  
-  if (!captain) {
-    alert('Player not found');
-    return;
-  }
-  
-  const viceName = prompt('Enter vice-captain player name:');
-  if (!viceName) return;
-  
-  const vice = selectedPlayers.find(p => 
-    p.name.toLowerCase().includes(viceName.toLowerCase()) && p._id !== captain._id
-  );
-  
-  if (!vice) {
-    alert('Player not found or same as captain');
-    return;
-  }
-  
-  captainId = captain._id;
-  viceCaptainId = vice._id;
-  updateTeamDisplay();
-  alert('Captains set successfully!');
 }
+
+// Add this new helper function
+async function saveLineupAfterTeamSave() {
+  try {
+    // Get starting XI (players with slotPosition 'START')
+    const starters = selectedPlayers
+      .filter(p => p.slotPosition === 'START')
+      .sort((a, b) => a.slotIndex - b.slotIndex)
+      .map(p => p._id);
+
+    // Get bench players (players with slotPosition 'BENCH')  
+    const benchPlayers = selectedPlayers
+      .filter(p => p.slotPosition === 'BENCH')
+      .sort((a, b) => a.slotIndex - b.slotIndex)
+      .map(p => p._id);
+
+    if (starters.length === 11 && benchPlayers.length === 4) {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/teams/lineup', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ 
+          startingXI: starters, 
+          benchOrder: benchPlayers 
+        })
+      });
+      
+      if (response.ok) {
+        console.log('Lineup automatically saved after team save');
+        // Now reload the team to get the correct positioning
+        await loadUserTeam();
+      } else {
+        console.log('Team saved but lineup save failed - positions may be mixed');
+        // Still reload to sync with backend
+        await loadUserTeam();
+      }
+    } else {
+      console.log('Invalid lineup - reloading team data');
+      await loadUserTeam();
+    }
+  } catch (error) {
+    console.error('Error saving lineup after team save:', error);
+    // Still reload to sync with backend
+    await loadUserTeam();
+  }
 }
 // Auto-complete team
 // Replace the autoComplete function in dashboard.js with this corrected version

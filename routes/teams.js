@@ -93,12 +93,14 @@ router.get('/my-team', authMiddleware, async (req, res) => {
 });
 
 // Save/Update full squad (15 players)
+// In routes/teams.js, replace the /save route with this:
 router.post('/save', authMiddleware, async (req, res) => {
   try {
-    const { team } = req.body; // [{ player: id, captain, viceCaptain }]
+    const { team } = req.body;
     if (!Array.isArray(team) || team.length !== TEAM_SIZE) {
       return res.status(400).json({ error: `You must select exactly ${TEAM_SIZE} players` });
     }
+    
     const gw = await getActiveGameweek();
     if (gw && isLocked(gw.deadline || gw.startDate)) {
       return res.status(403).json({ error: 'Transfers are locked for the active Gameweek' });
@@ -124,8 +126,14 @@ router.post('/save', authMiddleware, async (req, res) => {
     }
 
     const user = await User.findById(req.user._id);
+    
+    // Store old lineup before updating team
+    const oldStartingXI = user.startingXI || [];
+    const oldBenchOrder = user.benchOrder || [];
+    
     user.team = team.map(t => ({ player: t.player, captain: !!t.captain, viceCaptain: !!t.viceCaptain }));
-    // Ensure only one captain and one vice in data
+    
+    // Ensure only one captain and one vice
     let capSet = false, viceSet = false;
     user.team.forEach(s => {
       if (s.captain && !capSet) capSet = true; else s.captain = false;
@@ -134,12 +142,36 @@ router.post('/save', authMiddleware, async (req, res) => {
 
     user.budget = BUDGET_CAP - totalCost;
 
-    // Reset lineup as needed if now invalid
-    user.startingXI = [];
-    user.benchOrder = [];
+    // Only reset lineup if players have changed
+    const newPlayerIds = playerIds.map(String).sort();
+    const oldPlayerIds = user.team.map(s => String(s.player)).sort();
+    const playersChanged = JSON.stringify(newPlayerIds) !== JSON.stringify(oldPlayerIds);
+    
+    if (playersChanged) {
+      // Players changed, reset lineup
+      user.startingXI = [];
+      user.benchOrder = [];
+    } else {
+      // Keep existing valid lineup
+      const validStartingXI = oldStartingXI.filter(id => playerIds.includes(String(id)));
+      const validBenchOrder = oldBenchOrder.filter(id => playerIds.includes(String(id)));
+      
+      if (validStartingXI.length === 11 && validBenchOrder.length === 4) {
+        user.startingXI = validStartingXI;
+        user.benchOrder = validBenchOrder;
+      } else {
+        user.startingXI = [];
+        user.benchOrder = [];
+      }
+    }
+    
     await user.save();
 
-    res.json({ message: 'Team saved', budget: user.budget });
+    res.json({ 
+      message: 'Team saved', 
+      budget: user.budget,
+      lineupPreserved: !playersChanged && user.startingXI.length > 0
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
