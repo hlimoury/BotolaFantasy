@@ -141,6 +141,7 @@ async function loadPlayers() {
 }
 
 // Load user's team
+// Replace the loadUserTeam function in dashboard.js with this corrected version
 async function loadUserTeam() {
   try {
     const token = localStorage.getItem('token');
@@ -155,21 +156,106 @@ async function loadUserTeam() {
       if (data.team && data.team.length > 0) {
         selectedPlayers = [];
         
-        // Map team to selectedPlayers with START positions
-        data.team.forEach((item, index) => {
-          // First 11 are starters, rest are bench
-          const slotPosition = index < 11 ? 'START' : 'BENCH';
-          const slotIndex = index < 11 ? index : index - 11;
+        // Check if we have lineup data (startingXI and benchOrder)
+        if (data.startingXI && data.startingXI.length > 0 && data.benchOrder && data.benchOrder.length > 0) {
+          // Use the actual lineup positions
           
-          selectedPlayers.push({
+          // Add starting XI players in their correct positions
+          data.startingXI.forEach((playerId, index) => {
+            const teamItem = data.team.find(item => String(item.player._id) === String(playerId));
+            if (teamItem) {
+              selectedPlayers.push({
+                ...teamItem.player,
+                slotPosition: 'START',
+                slotIndex: index,
+                isCaptain: teamItem.captain,
+                isViceCaptain: teamItem.viceCaptain
+              });
+            }
+          });
+          
+          // Add bench players in their correct positions
+          data.benchOrder.forEach((playerId, index) => {
+            const teamItem = data.team.find(item => String(item.player._id) === String(playerId));
+            if (teamItem) {
+              selectedPlayers.push({
+                ...teamItem.player,
+                slotPosition: 'BENCH',
+                slotIndex: index,
+                isCaptain: teamItem.captain,
+                isViceCaptain: teamItem.viceCaptain
+              });
+            }
+          });
+        } else {
+          // Fallback: No lineup data, use smart positioning based on player positions
+          const teamPlayers = data.team.map(item => ({
             ...item.player,
-            slotPosition,
-            slotIndex,
             isCaptain: item.captain,
             isViceCaptain: item.viceCaptain
+          }));
+          
+          // Sort players by position priority for smart placement
+          const positionOrder = { 'GK': 0, 'DEF': 1, 'MID': 2, 'FWD': 3 };
+          teamPlayers.sort((a, b) => {
+            const posA = positionOrder[a.position] || 999;
+            const posB = positionOrder[b.position] || 999;
+            if (posA !== posB) return posA - posB;
+            // Within same position, sort by points descending
+            return (b.totalPoints || 0) - (a.totalPoints || 0);
           });
-        });
+          
+          // Define slot assignments based on formation
+          const slotAssignments = [
+            // Starting XI
+            { position: 'GK', slotPos: 'START', slotIdx: 0 },
+            { position: 'DEF', slotPos: 'START', slotIdx: 1 },
+            { position: 'DEF', slotPos: 'START', slotIdx: 2 },
+            { position: 'DEF', slotPos: 'START', slotIdx: 3 },
+            { position: 'DEF', slotPos: 'START', slotIdx: 4 },
+            { position: 'MID', slotPos: 'START', slotIdx: 5 },
+            { position: 'MID', slotPos: 'START', slotIdx: 6 },
+            { position: 'MID', slotPos: 'START', slotIdx: 7 },
+            { position: 'MID', slotPos: 'START', slotIdx: 8 },
+            { position: 'FWD', slotPos: 'START', slotIdx: 9 },
+            { position: 'FWD', slotPos: 'START', slotIdx: 10 },
+            // Bench
+            { position: 'GK', slotPos: 'BENCH', slotIdx: 0 },
+            { position: 'ANY', slotPos: 'BENCH', slotIdx: 1 }, // Any outfield
+            { position: 'ANY', slotPos: 'BENCH', slotIdx: 2 }, // Any outfield
+            { position: 'ANY', slotPos: 'BENCH', slotIdx: 3 }  // Any outfield
+          ];
+          
+          const usedPlayers = new Set();
+          
+          // Assign players to slots
+          for (const slot of slotAssignments) {
+            let candidate = null;
+            
+            if (slot.position === 'ANY') {
+              // For bench outfield slots, pick any remaining outfield player
+              candidate = teamPlayers.find(p => 
+                !usedPlayers.has(p._id) && p.position !== 'GK'
+              );
+            } else {
+              // Find player of specific position
+              candidate = teamPlayers.find(p => 
+                !usedPlayers.has(p._id) && p.position === slot.position
+              );
+            }
+            
+            if (candidate) {
+              selectedPlayers.push({
+                ...candidate,
+                slotPosition: slot.slotPos,
+                slotIndex: slot.slotIdx
+              });
+              usedPlayers.add(candidate._id);
+            }
+          }
+        }
         
+        // Set captain IDs
         captainId = data.team.find(p => p.captain)?.player._id;
         viceCaptainId = data.team.find(p => p.viceCaptain)?.player._id;
       }
@@ -576,6 +662,7 @@ function saveCaptains() {
 }
 // Auto-complete team
 // Replace the autoComplete function in dashboard.js with this corrected version
+// Replace the autoComplete function in dashboard.js with this updated version
 async function autoComplete() {
   selectedPlayers = [];
   let remainingBudget = totalBudget;
@@ -596,12 +683,12 @@ async function autoComplete() {
       { index: 9, position: 'FWD' },   // FWD slots
       { index: 10, position: 'FWD' }
     ],
-    // Bench positions
+    // Bench positions - 1 GK, 1 DEF, 1 MID, 1 FWD
     BENCH: [
       { index: 0, position: 'GK' },    // Bench GK
-      { index: 1, position: 'DEF' },   // Bench outfield (can be any position except GK)
-      { index: 2, position: 'MID' },   // Bench outfield
-      { index: 3, position: 'FWD' }    // Bench outfield
+      { index: 1, position: 'DEF' },   // Bench DEF
+      { index: 2, position: 'MID' },   // Bench MID
+      { index: 3, position: 'FWD' }    // Bench FWD
     ]
   };
   
@@ -648,28 +735,16 @@ async function autoComplete() {
     }
   }
   
-  // Fill bench
+  // Fill bench with specific positions (1 GK, 1 DEF, 1 MID, 1 FWD)
   for (const slot of slotMapping.BENCH) {
-    let candidates;
-    
-    if (slot.position === 'GK') {
-      // Bench GK must be goalkeeper
-      candidates = availablePlayers.GK.filter(p => 
-        !usedPlayerIds.has(p._id) && p.price <= remainingBudget
-      );
-    } else {
-      // Bench outfield can be DEF, MID, or FWD (prioritize cheaper players)
-      candidates = [
-        ...availablePlayers.DEF,
-        ...availablePlayers.MID,
-        ...availablePlayers.FWD
-      ]
-      .filter(p => !usedPlayerIds.has(p._id) && p.price <= remainingBudget)
-      .sort((a, b) => a.price - b.price); // Sort by price ascending for bench
-    }
+    // Each bench slot has a specific position requirement
+    const candidates = availablePlayers[slot.position].filter(p => 
+      !usedPlayerIds.has(p._id) && p.price <= remainingBudget
+    );
     
     if (candidates.length > 0) {
-      const selectedPlayer = candidates[0];
+      // For bench, prioritize cheaper players to save budget
+      const selectedPlayer = candidates.sort((a, b) => a.price - b.price)[0];
       
       selectedPlayers.push({
         ...selectedPlayer,
@@ -698,7 +773,7 @@ async function autoComplete() {
       FWD: availablePlayers.FWD.sort((a, b) => a.price - b.price)
     };
     
-    // Fill with cheapest players first
+    // Fill starting XI with cheapest players first
     for (const slot of slotMapping.START) {
       const candidates = cheapestPlayers[slot.position].filter(p => 
         !usedPlayerIds.has(p._id)
@@ -716,19 +791,9 @@ async function autoComplete() {
       }
     }
     
-    // Fill bench with cheapest available
+    // Fill bench with cheapest available for each specific position
     for (const slot of slotMapping.BENCH) {
-      let candidates;
-      
-      if (slot.position === 'GK') {
-        candidates = cheapestPlayers.GK.filter(p => !usedPlayerIds.has(p._id));
-      } else {
-        candidates = [
-          ...cheapestPlayers.DEF,
-          ...cheapestPlayers.MID,
-          ...cheapestPlayers.FWD
-        ].filter(p => !usedPlayerIds.has(p._id));
-      }
+      const candidates = cheapestPlayers[slot.position].filter(p => !usedPlayerIds.has(p._id));
       
       if (candidates.length > 0) {
         const selectedPlayer = candidates[0];
@@ -750,7 +815,7 @@ async function autoComplete() {
   if (selectedPlayers.length < 15) {
     alert(`Auto-complete partially successful. Selected ${selectedPlayers.length}/15 players. You may need to manually select remaining players or adjust budget.`);
   } else {
-    alert('Team auto-completed successfully!');
+    alert('Team auto-completed successfully!\nBench: 1 GK, 1 DEF, 1 MID, 1 FWD');
   }
 }
 
