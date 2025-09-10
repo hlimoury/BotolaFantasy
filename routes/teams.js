@@ -55,10 +55,34 @@ router.get('/status', authMiddleware, async (req, res) => {
 // Get my team
 router.get('/my-team', authMiddleware, async (req, res) => {
   const user = await User.findById(req.user._id)
-    .populate({ path: 'team.player', populate: { path: 'club', select: 'name shortName logo' } })
-    .populate('startingXI benchOrder');
+    .populate({ path: 'team.player', populate: { path: 'club', select: 'name shortName logo' } });
+  
+  // Sort team: starting XI first, then bench
+  let sortedTeam = [];
+  
+  // Add starting XI in order
+  if (user.startingXI && user.startingXI.length > 0) {
+    for (const playerId of user.startingXI) {
+      const slot = user.team.find(s => String(s.player._id) === String(playerId));
+      if (slot) sortedTeam.push(slot);
+    }
+  }
+  
+  // Add bench in order
+  if (user.benchOrder && user.benchOrder.length > 0) {
+    for (const playerId of user.benchOrder) {
+      const slot = user.team.find(s => String(s.player._id) === String(playerId));
+      if (slot && !sortedTeam.includes(slot)) sortedTeam.push(slot);
+    }
+  }
+  
+  // Add any remaining players not in lineup
+  for (const slot of user.team) {
+    if (!sortedTeam.includes(slot)) sortedTeam.push(slot);
+  }
+  
   res.json({
-    team: user.team,
+    team: sortedTeam.length > 0 ? sortedTeam : user.team,
     startingXI: user.startingXI || [],
     benchOrder: user.benchOrder || [],
     budget: user.budget,
@@ -122,44 +146,50 @@ router.post('/save', authMiddleware, async (req, res) => {
 });
 
 // Save lineup (starting XI + bench order)
+// REPLACE /lineup route
 router.post('/lineup', authMiddleware, async (req, res) => {
   try {
     const { startingXI, benchOrder } = req.body;
-    if (!Array.isArray(startingXI) || startingXI.length !== STARTERS) {
-      return res.status(400).json({ error: `Starting XI must have exactly ${STARTERS} players` });
+    if (!Array.isArray(startingXI) || startingXI.length !== 11) {
+      return res.status(400).json({ error: 'Starting XI must have exactly 11 players' });
     }
-    if (!Array.isArray(benchOrder) || benchOrder.length !== BENCH) {
-      return res.status(400).json({ error: `Bench must have exactly ${BENCH} players` });
-    }
-    const gw = await getActiveGameweek();
-    if (gw && isLocked(gw.deadline || gw.startDate)) {
-      return res.status(403).json({ error: 'Lineup changes are locked for the active Gameweek' });
+    if (!Array.isArray(benchOrder) || benchOrder.length !== 4) {
+      return res.status(400).json({ error: 'Bench must have exactly 4 players' });
     }
 
-    const user = await User.findById(req.user._id).populate('team.player');
+    const gw = await Gameweek.findOne({ isActive: true });
+    const locked = gw && gw.deadline ? (Date.now() >= new Date(gw.deadline).getTime()) : false;
+    if (locked) return res.status(403).json({ error: 'Lineup changes are locked for the active Gameweek' });
+
+    const user = await User.findById(req.user._id);
     const teamIds = user.team.map(s => String(s.player));
-    const all = [...startingXI.map(String), ...benchOrder.map(String)];
-    if (new Set(all).size !== TEAM_SIZE) {
-      return res.status(400).json({ error: 'Lineup + bench must contain each squad player exactly once' });
-    }
+    const all = [...startingXI, ...benchOrder].map(String);
+    if (new Set(all).size !== 15) return res.status(400).json({ error: 'Lineup must include all 15 squad players exactly once' });
     for (const pid of all) {
-      if (!teamIds.includes(String(pid))) {
-        return res.status(400).json({ error: 'Lineup contains players not in squad' });
-      }
+      if (!teamIds.includes(pid)) return res.status(400).json({ error: 'Lineup contains players not in your squad' });
     }
-    // Ensure at least 1 GK among starters
-    const startersPlayers = await Player.find({ _id: { $in: startingXI } }).select('position');
-    const gkStarters = startersPlayers.filter(p => p.position === 'GK').length;
-    if (gkStarters < 1) return res.status(400).json({ error: 'Starting XI must include at least 1 goalkeeper' });
 
-    user.startingXI = startingXI;
-    user.benchOrder = benchOrder;
+    // Clear flags
+    user.team.forEach(s => { s.starting = false; s.benchOrder = null; });
+
+    // Apply starters
+    for (const pid of startingXI) {
+      const slot = user.team.find(s => String(s.player) === String(pid));
+      if (slot) slot.starting = true;
+    }
+    // Apply bench order 1..4
+    benchOrder.forEach((pid, i) => {
+      const slot = user.team.find(s => String(s.player) === String(pid));
+      if (slot) slot.benchOrder = i + 1;
+    });
+
     await user.save();
     res.json({ message: 'Lineup saved' });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
 
 // Save captains (captain + vice)
 router.post('/captains', authMiddleware, async (req, res) => {

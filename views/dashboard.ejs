@@ -8,6 +8,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
   <style>
+    
     :root {
       --pitch-green: #2ecc71;
       --pitch-dark: #27ae60;
@@ -212,7 +213,7 @@
 
     .player-info {
       text-align: center;
-      color: white;
+      color: rgb(0, 0, 0);
       padding: 5px;
     }
 
@@ -604,6 +605,492 @@
       color: white;
       font-size: 0.85rem;
     }
+
+    .captain-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .captain-modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .captain-modal-content {
+            background: white;
+            width: 100%;
+            max-width: 500px;
+            border-radius: 20px;
+            animation: slideUp 0.3s ease;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .captain-modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            text-align: center;
+            background: linear-gradient(135deg, #ff0000, #007d02);
+            color: white;
+            border-radius: 20px 20px 0 0;
+        }
+
+        .captain-modal-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .captain-modal-subtitle {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin: 5px 0 0 0;
+        }
+
+        .captain-selection-section {
+            padding: 20px;
+        }
+
+        .selection-label {
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .captain-icon {
+            width: 30px;
+            height: 30px;
+            background: #ffd700;
+            color: #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .vice-captain-icon {
+            background: #c0c0c0;
+        }
+
+        .player-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            margin-bottom: 10px;
+            border: 2px solid transparent;
+            border-radius: 15px;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .player-card:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .player-card.selected-captain {
+            border-color: #ffd700;
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
+        }
+
+        .player-card.selected-vice {
+            border-color: #c0c0c0;
+            background: linear-gradient(135deg, rgba(192, 192, 192, 0.1), rgba(192, 192, 192, 0.05));
+        }
+
+        .player-info {
+            flex: 1;
+        }
+
+        .player-name {
+            font-weight: bold;
+            margin-bottom: 3px;
+            font-size: 1rem;
+        }
+
+        .player-details {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .player-stats {
+            text-align: right;
+            margin-left: 10px;
+        }
+
+        .player-points {
+            font-weight: bold;
+            color: #28a745;
+            margin-bottom: 3px;
+        }
+
+        .player-price {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .selection-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.75rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+
+        .captain-badge-large {
+            background: #ffd700;
+            color: #000;
+        }
+
+        .vice-badge-large {
+            background: #c0c0c0;
+            color: #000;
+        }
+
+        .captain-modal-actions {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+
+        .captain-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-save-captains {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+        }
+
+        .btn-save-captains:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .btn-cancel-captains {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-cancel-captains:hover {
+            background: #5a6268;
+        }
+
+        .validation-message {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 576px) {
+            .captain-modal-content {
+                margin: 10px;
+                max-height: 90vh;
+            }
+
+            .captain-selection-section {
+                padding: 15px;
+            }
+
+            .player-card {
+                padding: 12px;
+                margin-bottom: 8px;
+            }
+
+            .player-name {
+                font-size: 0.95rem;
+            }
+
+            .player-details {
+                font-size: 0.8rem;
+            }
+
+            .captain-modal-actions {
+                padding: 15px;
+            }
+
+            .captain-btn {
+                padding: 10px;
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Starting XI indicator */
+        .starting-badge {
+            background: #007bff;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            margin-left: 5px;
+        }
+
+        /* Replace the position slot styles in your dashboard.ejs CSS with these updated styles */
+
+.position-slot {
+  background: rgba(0,0,0,0.3);
+  border: 2px dashed rgba(255,255,255,0.5);
+  border-radius: 12px;
+  width: 100px;
+  height: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.position-slot:hover {
+  background: rgba(255,255,255,0.1);
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+}
+
+.position-slot.filled {
+  background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.1));
+  border: 2px solid rgba(255,255,255,0.8);
+}
+
+.position-slot .add-icon {
+  font-size: 2rem;
+  color: rgba(255,255,255,0.7);
+  margin-bottom: 5px;
+}
+
+.position-label {
+  background: rgba(0,0,0,0.6);
+  color: white;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.65rem;
+  font-weight: bold;
+  position: absolute;
+  top: -1px;
+  left: 16%;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.player-info {
+  text-align: center;
+  color: rgb(0, 0, 0);
+  padding: 2px;
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.player-name {
+  font-size: 0.7rem;
+  font-weight: bold;
+  margin: 3px 0 2px 0;
+  word-break: break-word;
+  line-height: 1.1;
+  max-height: 2.2em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.player-club {
+  font-size: 0.6rem;
+  opacity: 0.85;
+  margin: 2px 0;
+  line-height: 1;
+}
+
+.player-points {
+  font-size: 0.6rem;
+  background: rgba(40, 167, 69, 0.8);
+  color: white;
+  padding: 2px 5px;
+  border-radius: 8px;
+  margin: 2px 0;
+  font-weight: bold;
+}
+
+.player-price {
+  font-size: 0.6rem;
+  opacity: 0.9;
+  margin: 1px 0;
+}
+
+.captain-badge, .vice-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  background: #ffd700;
+  color: #000;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 0.65rem;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  z-index: 20;
+}
+
+.vice-badge {
+  background: #c0c0c0;
+}
+
+.transfer-out {
+  filter: grayscale(100%);
+  opacity: 0.6;
+}
+
+.transfer-out::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 5px,
+    rgba(255,0,0,0.3) 5px,
+    rgba(255,0,0,0.3) 10px
+  );
+}
+
+/* Bench section updates */
+.bench-slot {
+  width: 90px;
+  height: 100px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .position-slot {
+    width: 85px;
+    height: 100px;
+    padding: 6px;
+  }
+
+  .bench-slot {
+    width: 75px;
+    height: 90px;
+  }
+
+  .formation-row {
+    gap: 8px;
+    margin: 18px 0;
+  }
+
+  .player-name {
+    font-size: 0.65rem;
+  }
+
+  .player-club, .player-points, .player-price {
+    font-size: 0.55rem;
+  }
+
+  .position-label {
+    font-size: 0.6rem;
+    padding: 2px 6px;
+  }
+}
+
+@media (max-width: 576px) {
+  .position-slot {
+    width: 75px;
+    height: 90px;
+    padding: 5px;
+  }
+
+  .formation-row {
+    gap: 5px;
+  }
+
+  .player-name {
+    font-size: 0.6rem;
+  }
+
+  .player-club, .player-points, .player-price {
+    font-size: 0.5rem;
+  }
+
+  .captain-badge, .vice-badge {
+    width: 18px;
+    height: 18px;
+    font-size: 0.6rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .position-slot {
+    width: 70px;
+    height: 85px;
+  }
+
+  .formation-row {
+    gap: 4px;
+  }
+
+  .player-name {
+    font-size: 0.55rem;
+  }
+
+  .player-club, .player-points, .player-price {
+    font-size: 0.48rem;
+  }
+}
+
+.form-select-sm{
+  padding-bottom: 1.25rem !important; 
+}
   </style>
 </head>
 <body>
@@ -699,111 +1186,101 @@
         <div class="center-circle"></div>
         <div class="penalty-box-top"></div>
         <div class="penalty-box-bottom"></div>
+<!-- REPLACE the position slots sections with proper position labels -->
 
-        <!-- Goalkeepers -->
-        <div class="formation-row" id="gk-row">
-          <div class="position-slot" data-position="GK" data-index="0" onclick="selectPosition('GK', 0)">
-            <span class="position-label">GKP</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="GK" data-index="1" onclick="selectPosition('GK', 1)">
-            <span class="position-label">GKP</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-        </div>
+<!-- Goalkeepers -->
+<div class="formation-row" id="row-gk">
+  <div class="position-slot" data-position="START" data-index="0" onclick="selectPosition('START', 0)">
+    <span class="position-label">GK</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+</div>
 
-        <!-- Defenders -->
-        <div class="formation-row" id="def-row">
-          <div class="position-slot" data-position="DEF" data-index="0" onclick="selectPosition('DEF', 0)">
-            <span class="position-label">DEF</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="DEF" data-index="1" onclick="selectPosition('DEF', 1)">
-            <span class="position-label">DEF</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="DEF" data-index="2" onclick="selectPosition('DEF', 2)">
-            <span class="position-label">DEF</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="DEF" data-index="3" onclick="selectPosition('DEF', 3)">
-            <span class="position-label">DEF</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="DEF" data-index="4" onclick="selectPosition('DEF', 4)">
-            <span class="position-label">DEF</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-        </div>
+<!-- Defenders -->
+<div class="formation-row" id="row-def">
+  <div class="position-slot" data-position="START" data-index="1" onclick="selectPosition('START', 1)">
+    <span class="position-label">DEF</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+  <div class="position-slot" data-position="START" data-index="2" onclick="selectPosition('START', 2)">
+    <span class="position-label">DEF</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+  <div class="position-slot" data-position="START" data-index="3" onclick="selectPosition('START', 3)">
+    <span class="position-label">DEF</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+  <div class="position-slot" data-position="START" data-index="4" onclick="selectPosition('START', 4)">
+    <span class="position-label">DEF</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+</div>
 
-        <!-- Midfielders -->
-        <div class="formation-row" id="mid-row">
-          <div class="position-slot" data-position="MID" data-index="0" onclick="selectPosition('MID', 0)">
-            <span class="position-label">MID</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="MID" data-index="1" onclick="selectPosition('MID', 1)">
-            <span class="position-label">MID</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="MID" data-index="2" onclick="selectPosition('MID', 2)">
-            <span class="position-label">MID</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="MID" data-index="3" onclick="selectPosition('MID', 3)">
-            <span class="position-label">MID</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="MID" data-index="4" onclick="selectPosition('MID', 4)">
-            <span class="position-label">MID</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-        </div>
+<!-- Midfielders -->
+<div class="formation-row" id="row-mid">
+  <div class="position-slot" data-position="START" data-index="5" onclick="selectPosition('START', 5)">
+    <span class="position-label">MID</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+  <div class="position-slot" data-position="START" data-index="6" onclick="selectPosition('START', 6)">
+    <span class="position-label">MID</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+  <div class="position-slot" data-position="START" data-index="7" onclick="selectPosition('START', 7)">
+    <span class="position-label">MID</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+  <div class="position-slot" data-position="START" data-index="8" onclick="selectPosition('START', 8)">
+    <span class="position-label">MID</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+</div>
 
-        <!-- Forwards -->
-        <div class="formation-row" id="fwd-row">
-          <div class="position-slot" data-position="FWD" data-index="0" onclick="selectPosition('FWD', 0)">
-            <span class="position-label">FWD</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="FWD" data-index="1" onclick="selectPosition('FWD', 1)">
-            <span class="position-label">FWD</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-          <div class="position-slot" data-position="FWD" data-index="2" onclick="selectPosition('FWD', 2)">
-            <span class="position-label">FWD</span>
-            <i class="bi bi-plus-circle add-icon"></i>
-          </div>
-        </div>
+<!-- Forwards -->
+<div class="formation-row" id="row-fwd">
+  <div class="position-slot" data-position="START" data-index="9" onclick="selectPosition('START', 9)">
+    <span class="position-label">FWD</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+  <div class="position-slot" data-position="START" data-index="10" onclick="selectPosition('START', 10)">
+    <span class="position-label">FWD</span>
+    <i class="bi bi-plus-circle add-icon"></i>
+  </div>
+</div>
 
-        <!-- Bench Section -->
-        <div class="bench-section">
-          <div class="bench-label">Substitutes</div>
-          <div class="bench-row">
-            <div class="position-slot bench-slot" data-position="BENCH" data-index="0" onclick="selectPosition('BENCH', 0)">
-              <span class="position-label">SUB</span>
-              <i class="bi bi-plus-circle add-icon"></i>
-            </div>
-            <div class="position-slot bench-slot" data-position="BENCH" data-index="1" onclick="selectPosition('BENCH', 1)">
-              <span class="position-label">SUB</span>
-              <i class="bi bi-plus-circle add-icon"></i>
-            </div>
-            <div class="position-slot bench-slot" data-position="BENCH" data-index="2" onclick="selectPosition('BENCH', 2)">
-              <span class="position-label">SUB</span>
-              <i class="bi bi-plus-circle add-icon"></i>
-            </div>
-            <div class="position-slot bench-slot" data-position="BENCH" data-index="3" onclick="selectPosition('BENCH', 3)">
-              <span class="position-label">SUB</span>
-              <i class="bi bi-plus-circle add-icon"></i>
-            </div>
-          </div>
-        </div>
+<!-- Bench Section -->
+<div class="bench-section">
+  <div class="bench-label">Substitutes (1 GK + 3 Outfield)</div>
+  <div class="bench-row">
+    <div class="position-slot bench-slot" data-position="BENCH" data-index="0" onclick="selectPosition('BENCH', 0)">
+      <span class="position-label">GK</span>
+      <i class="bi bi-plus-circle add-icon"></i>
+    </div>
+    <div class="position-slot bench-slot" data-position="BENCH" data-index="1" onclick="selectPosition('BENCH', 1)">
+      <span class="position-label">OUT</span>
+      <i class="bi bi-plus-circle add-icon"></i>
+    </div>
+    <div class="position-slot bench-slot" data-position="BENCH" data-index="2" onclick="selectPosition('BENCH', 2)">
+      <span class="position-label">OUT</span>
+      <i class="bi bi-plus-circle add-icon"></i>
+    </div>
+    <div class="position-slot bench-slot" data-position="BENCH" data-index="3" onclick="selectPosition('BENCH', 3)">
+      <span class="position-label">OUT</span>
+      <i class="bi bi-plus-circle add-icon"></i>
+    </div>
+  </div>
+</div>
+        
       </div>
     </div>
 
     <!-- Control Buttons -->
     <div class="controls-section">
       <div class="d-flex flex-wrap justify-content-center gap-2">
+        <button class="control-btn btn-primary" onclick="saveLineup()">
+          <i class="bi bi-people"></i> Save Lineup
+        </button>
+        
         <button class="control-btn btn-primary" onclick="saveTeam()">
           <i class="bi bi-save"></i> Save Team
         </button>
@@ -844,11 +1321,222 @@
     </div>
   </div>
 
+  <div class="captain-modal" id="captainModal">
+    <div class="captain-modal-content">
+        <div class="captain-modal-header">
+            <h5 class="captain-modal-title">Select Captain & Vice-Captain</h5>
+            <p class="captain-modal-subtitle">Captain gets 2x points, Vice-Captain gets 1.5x points</p>
+        </div>
+
+        <div class="captain-selection-section">
+            <div class="selection-label">
+                <div class="captain-icon">C</div>
+                Captain (2x Points)
+            </div>
+            <div id="captainPlayersList">
+                <!-- Captain options will be populated here -->
+            </div>
+
+            <div class="selection-label" style="margin-top: 25px;">
+                <div class="captain-icon vice-captain-icon">VC</div>
+                Vice-Captain (1.5x Points)
+            </div>
+            <div id="viceCaptainPlayersList">
+                <!-- Vice-captain options will be populated here -->
+            </div>
+
+            <div id="captainValidation" class="validation-message" style="display: none;">
+                Please select both a Captain and Vice-Captain from your starting XI.
+            </div>
+        </div>
+
+        <div class="captain-modal-actions">
+            <button class="captain-btn btn-cancel-captains" onclick="closeCaptainModal()">
+                Cancel
+            </button>
+            <button class="captain-btn btn-save-captains" onclick="saveCaptainsFromModal()">
+                <i class="bi bi-star-fill me-2"></i>Save Captains
+            </button>
+        </div>
+    </div>
+</div>
+
   <footer class="text-center text-white py-3 mt-5">
     <p class="mb-0">&copy; 2025 Botola Fantasy. All rights reserved.</p>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/js/dashboard.js"></script>
+
+  <script>
+      let selectedCaptainId = null;
+        let selectedViceCaptainId = null;
+
+        // Enhanced saveCaptains function - replace the old one
+        function saveCaptains() {
+            if (selectedPlayers.length === 0) {
+                alert('Add players to your team first');
+                return;
+            }
+
+            // Get starting XI players only (captains must be in starting XI)
+            const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
+            
+            if (startingPlayers.length === 0) {
+                alert('You need players in your starting XI to select captains');
+                return;
+            }
+
+            // Set current selections
+            selectedCaptainId = captainId;
+            selectedViceCaptainId = viceCaptainId;
+
+            // Populate and show modal
+            populateCaptainModal(startingPlayers);
+            document.getElementById('captainModal').classList.add('active');
+        }
+
+        function populateCaptainModal(startingPlayers) {
+            const captainList = document.getElementById('captainPlayersList');
+            const viceList = document.getElementById('viceCaptainPlayersList');
+            
+            // Sort players by points (highest first)
+            const sortedPlayers = startingPlayers.sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
+            
+            // Generate player cards for captain selection
+            captainList.innerHTML = sortedPlayers.map(player => `
+                <div class="player-card ${selectedCaptainId === player._id ? 'selected-captain' : ''}" 
+                     onclick="selectCaptain('${player._id}')">
+                    ${selectedCaptainId === player._id ? '<div class="selection-badge captain-badge-large">C</div>' : ''}
+                    <div class="player-info">
+                        <div class="player-name">${player.name}</div>
+                        <div class="player-details">
+                            ${player.club?.shortName || player.club?.name || 'No Club'} • ${player.position}
+                            <span class="starting-badge">Starting XI</span>
+                        </div>
+                    </div>
+                    <div class="player-stats">
+                        <div class="player-points">${player.totalPoints || 0} pts</div>
+                        <div class="player-price">${player.price}M</div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Generate player cards for vice-captain selection (exclude current captain)
+            viceList.innerHTML = sortedPlayers
+                .filter(p => p._id !== selectedCaptainId)
+                .map(player => `
+                    <div class="player-card ${selectedViceCaptainId === player._id ? 'selected-vice' : ''}" 
+                         onclick="selectViceCaptain('${player._id}')">
+                        ${selectedViceCaptainId === player._id ? '<div class="selection-badge vice-badge-large">VC</div>' : ''}
+                        <div class="player-info">
+                            <div class="player-name">${player.name}</div>
+                            <div class="player-details">
+                                ${player.club?.shortName || player.club?.name || 'No Club'} • ${player.position}
+                                <span class="starting-badge">Starting XI</span>
+                            </div>
+                        </div>
+                        <div class="player-stats">
+                            <div class="player-points">${player.totalPoints || 0} pts</div>
+                            <div class="player-price">${player.price}M</div>
+                        </div>
+                    </div>
+                `).join('');
+        }
+
+        function selectCaptain(playerId) {
+            selectedCaptainId = playerId;
+            
+            // If vice-captain is same as new captain, clear vice
+            if (selectedViceCaptainId === playerId) {
+                selectedViceCaptainId = null;
+            }
+            
+            // Refresh the modal display
+            const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
+            populateCaptainModal(startingPlayers);
+        }
+
+        function selectViceCaptain(playerId) {
+            // Can't select same player as captain
+            if (playerId === selectedCaptainId) {
+                return;
+            }
+            selectedViceCaptainId = playerId;
+            
+            // Refresh the modal display
+            const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
+            populateCaptainModal(startingPlayers);
+        }
+
+        async function saveCaptainsFromModal() {
+            const validation = document.getElementById('captainValidation');
+            
+            if (!selectedCaptainId || !selectedViceCaptainId) {
+                validation.style.display = 'block';
+                validation.textContent = 'Please select both a Captain and Vice-Captain.';
+                return;
+            }
+
+            if (selectedCaptainId === selectedViceCaptainId) {
+                validation.style.display = 'block';
+                validation.textContent = 'Captain and Vice-Captain must be different players.';
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/teams/captains', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        captainId: selectedCaptainId,
+                        viceCaptainId: selectedViceCaptainId
+                    })
+                });
+
+                if (response.ok) {
+                    // Update global variables
+                    captainId = selectedCaptainId;
+                    viceCaptainId = selectedViceCaptainId;
+                    
+                    // Update display
+                    updateTeamDisplay();
+                    
+                    // Close modal and show success
+                    closeCaptainModal();
+                    alert('Captains saved successfully!');
+                } else {
+                    const error = await response.json();
+                    validation.style.display = 'block';
+                    validation.textContent = error.error || 'Failed to save captains';
+                }
+            } catch (error) {
+                console.error('Error saving captains:', error);
+                validation.style.display = 'block';
+                validation.textContent = 'Error saving captains: ' + error.message;
+            }
+        }
+
+        function closeCaptainModal() {
+            document.getElementById('captainModal').classList.remove('active');
+            document.getElementById('captainValidation').style.display = 'none';
+            
+            // Reset selections to current values
+            selectedCaptainId = captainId;
+            selectedViceCaptainId = viceCaptainId;
+        }
+
+        // Close modal when clicking outside
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('captainModal');
+            if (e.target === modal) {
+                closeCaptainModal();
+            }
+        });
+  </script>
 </body>
 </html>

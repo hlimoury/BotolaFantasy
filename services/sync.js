@@ -1,3 +1,4 @@
+// sync.js
 const api = require('./apiFootball');
 const Club = require('../models/Club');
 const Player = require('../models/Player');
