@@ -61,18 +61,72 @@ function setupEventListeners() {
 }
 
 // Load clubs from API
+// Replace the loadClubs function in dashboard.js with this updated version
 async function loadClubs() {
   try {
-    const response = await fetch('/api/clubs');
-    allClubs = await response.json();
+    // Load all players first to get clubs that have players
+    const playersResponse = await fetch('/api/players');
+    const players = await playersResponse.json();
     
+    // Get unique clubs that have players
+    const clubsWithPlayers = new Map();
+    
+    players.forEach(player => {
+      if (player.club && player.club._id) {
+        clubsWithPlayers.set(player.club._id, {
+          _id: player.club._id,
+          name: player.club.name,
+          shortName: player.club.shortName
+        });
+      }
+    });
+    
+    // Convert Map to array and sort alphabetically
+    allClubs = Array.from(clubsWithPlayers.values()).sort((a, b) => 
+      a.name.localeCompare(b.name)
+    );
+    
+    // Update the club filter dropdown
     const clubFilter = document.getElementById('clubFilter');
     if (clubFilter && allClubs.length > 0) {
       clubFilter.innerHTML = '<option value="">All Clubs</option>' +
-        allClubs.map(club => `<option value="${club._id}">${club.name}</option>`).join('');
+        allClubs.map(club => 
+          `<option value="${club._id}">${club.name}</option>`
+        ).join('');
     }
   } catch (error) {
     console.error('Error loading clubs:', error);
+    
+    // Fallback: try loading from clubs endpoint
+    try {
+      const response = await fetch('/api/clubs');
+      const allClubsFromAPI = await response.json();
+      
+      // Filter only clubs that appear in players
+      if (allPlayers && allPlayers.length > 0) {
+        const playerClubIds = new Set(
+          allPlayers
+            .filter(p => p.club && p.club._id)
+            .map(p => p.club._id)
+        );
+        
+        allClubs = allClubsFromAPI
+          .filter(club => playerClubIds.has(club._id))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      } else {
+        allClubs = allClubsFromAPI;
+      }
+      
+      const clubFilter = document.getElementById('clubFilter');
+      if (clubFilter && allClubs.length > 0) {
+        clubFilter.innerHTML = '<option value="">All Clubs</option>' +
+          allClubs.map(club => 
+            `<option value="${club._id}">${club.name}</option>`
+          ).join('');
+      }
+    } catch (fallbackError) {
+      console.error('Error loading clubs (fallback):', fallbackError);
+    }
   }
 }
 
