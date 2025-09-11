@@ -580,3 +580,177 @@ function logout() {
   localStorage.removeItem('user');
   window.location.href = '/login';
 }
+
+// Add this function to your dashboard.js file
+
+async function autoComplete() {
+  if (selectedPlayers.length >= 15) {
+    alert('Team is already full!');
+    return;
+  }
+
+  if (!confirm('This will automatically fill your remaining slots with budget-friendly players. Continue?')) {
+    return;
+  }
+
+  try {
+    // Get already selected player IDs
+    const selectedIds = new Set(selectedPlayers.map(p => String(p._id)));
+    
+    // Get available players, sorted by value (price vs points ratio)
+    const availablePlayers = allPlayers
+      .filter(p => !selectedIds.has(String(p._id)))
+      .map(p => ({
+        ...p,
+        value: (Number(p.totalPoints) || 0) / (Number(p.price) || 0.5) // points per million
+      }))
+      .sort((a, b) => b.value - a.value); // best value first
+
+    // Calculate remaining budget
+    const currentSpend = selectedPlayers.reduce((sum, p) => sum + Number(p.price || 0), 0);
+    let remainingBudget = totalBudget - currentSpend;
+
+    // Fill starting XI first
+    const startingSlots = [
+      { position: 'START', index: 0, posFilter: 'GK', required: true },
+      { position: 'START', index: 1, posFilter: 'DEF', required: true },
+      { position: 'START', index: 2, posFilter: 'DEF', required: true },
+      { position: 'START', index: 3, posFilter: 'DEF', required: true },
+      { position: 'START', index: 4, posFilter: 'DEF', required: true },
+      { position: 'START', index: 5, posFilter: 'MID', required: true },
+      { position: 'START', index: 6, posFilter: 'MID', required: true },
+      { position: 'START', index: 7, posFilter: 'MID', required: true },
+      { position: 'START', index: 8, posFilter: 'MID', required: true },
+      { position: 'START', index: 9, posFilter: 'FWD', required: true },
+      { position: 'START', index: 10, posFilter: 'FWD', required: true }
+    ];
+
+    // Fill bench slots
+    const benchSlots = [
+      { position: 'BENCH', index: 0, posFilter: 'GK', required: true },
+      { position: 'BENCH', index: 1, posFilter: 'OUTFIELD', required: true },
+      { position: 'BENCH', index: 2, posFilter: 'OUTFIELD', required: true },
+      { position: 'BENCH', index: 3, posFilter: 'OUTFIELD', required: true }
+    ];
+
+    const allSlots = [...startingSlots, ...benchSlots];
+
+    // Fill empty slots
+    for (const slot of allSlots) {
+      const existingPlayer = selectedPlayers.find(p => 
+        p.slotPosition === slot.position && p.slotIndex === slot.index
+      );
+      
+      if (existingPlayer) continue; // slot already filled
+
+      let candidates = [];
+      
+      if (slot.posFilter === 'GK') {
+        candidates = availablePlayers.filter(p => p.position === 'GK');
+      } else if (slot.posFilter === 'OUTFIELD') {
+        candidates = availablePlayers.filter(p => p.position !== 'GK');
+      } else {
+        candidates = availablePlayers.filter(p => p.position === slot.posFilter);
+      }
+
+      // Remove already selected players
+      const currentSelectedIds = new Set(selectedPlayers.map(p => String(p._id)));
+      candidates = candidates.filter(p => !currentSelectedIds.has(String(p._id)));
+
+      // Find affordable player
+      const affordableCandidate = candidates.find(p => Number(p.price || 0) <= remainingBudget);
+      
+      if (affordableCandidate) {
+        // Add player to selected
+        selectedPlayers.push({
+          ...affordableCandidate,
+          _id: String(affordableCandidate._id),
+          slotPosition: slot.position,
+          slotIndex: slot.index
+        });
+        
+        remainingBudget -= Number(affordableCandidate.price || 0);
+      } else {
+        console.warn(`No affordable ${slot.posFilter} found for slot ${slot.position}[${slot.index}]`);
+      }
+    }
+
+    // Auto-assign captain and vice-captain if not set
+    if (!captainId || !viceCaptainId) {
+      const starters = selectedPlayers.filter(p => p.slotPosition === 'START');
+      const sortedStarters = starters.sort((a, b) => (Number(b.totalPoints) || 0) - (Number(a.totalPoints) || 0));
+      
+      if (!captainId && sortedStarters[0]) {
+        captainId = String(sortedStarters[0]._id);
+      }
+      if (!viceCaptainId && sortedStarters[1]) {
+        viceCaptainId = String(sortedStarters[1]._id);
+      }
+    }
+
+    updateTeamDisplay();
+    updateUI();
+    alert('Team auto-completed successfully!');
+
+  } catch (error) {
+    console.error('Auto-complete error:', error);
+    alert('Error during auto-complete');
+  }
+}
+
+// Add this saveLineup function to your dashboard.js
+
+async function saveLineup() {
+  if (selectedPlayers.length !== 15) {
+    alert('You must select exactly 15 players first');
+    return;
+  }
+
+  // Verify we have 11 starters and 4 bench
+  const starters = selectedPlayers.filter(p => p.slotPosition === 'START');
+  const bench = selectedPlayers.filter(p => p.slotPosition === 'BENCH');
+
+  if (starters.length !== 11) {
+    alert('Starting XI must have exactly 11 players');
+    return;
+  }
+
+  if (bench.length !== 4) {
+    alert('Bench must have exactly 4 players');
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem('token');
+    
+    // Sort starters and bench by their slot indices
+    const sortedStarters = starters.sort((a, b) => a.slotIndex - b.slotIndex);
+    const sortedBench = bench.sort((a, b) => a.slotIndex - b.slotIndex);
+    
+    const startingXI = sortedStarters.map(p => p._id);
+    const benchOrder = sortedBench.map(p => p._id);
+
+    const response = await fetch('/api/teams/lineup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        startingXI,
+        benchOrder
+      })
+    });
+
+    if (response.ok) {
+      alert('Lineup saved successfully!');
+      await loadActiveGWPoints(); // Refresh live points
+    } else {
+      const error = await response.json();
+      alert(error.error || 'Failed to save lineup');
+    }
+  } catch (error) {
+    console.error('Error saving lineup:', error);
+    alert('Error saving lineup');
+  }
+}
