@@ -1,3 +1,4 @@
+// matchSchema.js
 const mongoose = require('mongoose');
 
 const matchSchema = new mongoose.Schema({
@@ -16,17 +17,18 @@ const matchSchema = new mongoose.Schema({
     {
       player: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
       apiPlayerId: Number,
-      goals: Number,
-      assists: Number,
-      cleanSheet: Boolean,
-      yellowCard: Boolean,
-      redCard: Boolean,
-      saves: Number,
-      minutesPlayed: Number,
-      penaltiesSaved: Number,
-      penaltiesMissed: Number,
-      ownGoals: Number,
-      conceded: Number,
+      goals: { type: Number, default: 0 },
+      assists: { type: Number, default: 0 },
+      cleanSheet: { type: Boolean, default: false },
+      yellowCard: { type: Boolean, default: false },
+      redCard: { type: Boolean, default: false },
+      saves: { type: Number, default: 0 },
+      minutesPlayed: { type: Number, default: 90 },
+      penaltiesSaved: { type: Number, default: 0 },
+      penaltiesMissed: { type: Number, default: 0 },
+      ownGoals: { type: Number, default: 0 },
+      conceded: { type: Number, default: 0 },
+      isManOfTheMatch: { type: Boolean, default: false }, // NEW FIELD
       points: Number
     }
   ]

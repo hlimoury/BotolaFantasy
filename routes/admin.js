@@ -104,6 +104,20 @@ router.put('/gameweeks/:id/activate', async (req, res) => {
     res.json(gw);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Manually finalize a gameweek now (compute and lock points)
+router.put('/gameweeks/:id/finalize', async (req, res) => {
+  try {
+    const gw = await Gameweek.findById(req.params.id);
+    if (!gw) return res.status(404).json({ error: 'Gameweek not found' });
+    await finalizeGameweek(gw); // marks gw.isCompleted = true internally
+    const updated = await Gameweek.findById(req.params.id);
+    res.json({ message: 'Gameweek finalized', gameweek: updated });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // CRUD: Matches
 router.get('/matches', async (_req, res) => { 
   try { 
@@ -228,6 +242,7 @@ router.post('/maintenance/fix-match-apiFixtureId-index', async (_req, res) => {
 
 
 // Results & Performances (manual or API)
+// Updated route in routes/admin.js - replace the results endpoint
 router.post('/matches/:id/results', async (req, res) => {
   try {
     const match = await Match.findById(req.params.id);
@@ -244,33 +259,58 @@ router.post('/matches/:id/results', async (req, res) => {
     const { homeScore, awayScore, status, playerPerformances } = req.body;
     if (!Array.isArray(playerPerformances)) return res.status(400).json({ error: 'playerPerformances must be an array' });
 
-    // revert previous aggregates (if any)
-    if (Array.isArray(match.playerPerformances) && match.playerPerformances.length) {
+    // FIXED: Better reversion of previous stats
+    if (Array.isArray(match.playerPerformances) && match.playerPerformances.length > 0) {
+      console.log('Reverting previous performance stats for match:', match._id);
+      
       for (const prev of match.playerPerformances) {
-        if (!prev.player) continue;
-        await Player.updateOne(
-          { _id: prev.player },
-          {
-            $inc: {
-              totalPoints: -(prev.points || 0),
-              'stats.goals': -(prev.goals || 0),
-              'stats.assists': -(prev.assists || 0),
-              'stats.cleanSheets': prev.cleanSheet ? -1 : 0,
-              'stats.yellowCards': prev.yellowCard ? -1 : 0,
-              'stats.redCards': prev.redCard ? -1 : 0,
-              'stats.saves': -(prev.saves || 0),
-              'stats.minutesPlayed': -(prev.minutesPlayed || 0)
+        if (!prev.player) {
+          console.log('Skipping performance with no player ID');
+          continue;
+        }
+        
+        try {
+          const updateResult = await Player.updateOne(
+            { _id: prev.player },
+            {
+              $inc: {
+                totalPoints: -(prev.points || 0),
+                'stats.goals': -(prev.goals || 0),
+                'stats.assists': -(prev.assists || 0),
+                'stats.cleanSheets': prev.cleanSheet ? -1 : 0,
+                'stats.yellowCards': prev.yellowCard ? -1 : 0,
+                'stats.redCards': prev.redCard ? -1 : 0,
+                'stats.saves': -(prev.saves || 0),
+                'stats.minutesPlayed': -(prev.minutesPlayed || 0)
+              }
             }
+          );
+          
+          if (updateResult.matchedCount === 0) {
+            console.log('Warning: Player not found when reverting:', prev.player);
           }
-        );
+        } catch (playerUpdateError) {
+          console.error('Error reverting player stats:', prev.player, playerUpdateError);
+          // Continue with other players even if one fails
+        }
       }
     }
 
+    // Build new performances
     const built = [];
     for (const row of playerPerformances) {
       const playerId = row.player || row.playerId;
+      if (!playerId) {
+        console.log('Skipping performance row with no player ID');
+        continue;
+      }
+      
       const dbPlayer = await Player.findById(playerId);
-      if (!dbPlayer) continue;
+      if (!dbPlayer) {
+        console.log('Player not found:', playerId);
+        continue;
+      }
+      
       const s = {
         minutesPlayed: Number(row.minutesPlayed) || 0,
         goals: Number(row.goals) || 0,
@@ -284,45 +324,76 @@ router.post('/matches/:id/results', async (req, res) => {
         penaltiesMissed: Number(row.penaltiesMissed) || 0,
         ownGoals: Number(row.ownGoals) || 0
       };
+      
       const points = computePoints(dbPlayer.position, s);
-      built.push({ player: dbPlayer._id, apiPlayerId: dbPlayer.apiId || undefined, ...s, points });
+      built.push({ 
+        player: dbPlayer._id, 
+        apiPlayerId: dbPlayer.apiId || undefined, 
+        ...s, 
+        points 
+      });
 
-      await Player.updateOne(
-        { _id: dbPlayer._id },
-        {
-          $inc: {
-            totalPoints: points,
-            'stats.goals': s.goals,
-            'stats.assists': s.assists,
-            'stats.cleanSheets': s.cleanSheet ? 1 : 0,
-            'stats.yellowCards': s.yellowCard ? 1 : 0,
-            'stats.redCards': s.redCard ? 1 : 0,
-            'stats.saves': s.saves,
-            'stats.minutesPlayed': s.minutesPlayed
+      // Apply new stats to player
+      try {
+        await Player.updateOne(
+          { _id: dbPlayer._id },
+          {
+            $inc: {
+              totalPoints: points,
+              'stats.goals': s.goals,
+              'stats.assists': s.assists,
+              'stats.cleanSheets': s.cleanSheet ? 1 : 0,
+              'stats.yellowCards': s.yellowCard ? 1 : 0,
+              'stats.redCards': s.redCard ? 1 : 0,
+              'stats.saves': s.saves,
+              'stats.minutesPlayed': s.minutesPlayed
+            }
           }
-        }
-      );
+        );
+      } catch (playerUpdateError) {
+        console.error('Error updating player stats:', dbPlayer._id, playerUpdateError);
+        return res.status(500).json({ error: `Failed to update player ${dbPlayer.name}: ${playerUpdateError.message}` });
+      }
     }
 
+    // Update match with new data
     match.homeScore = homeScore ?? match.homeScore;
     match.awayScore = awayScore ?? match.awayScore;
     if (status) match.status = status;
     match.isCompleted = true;
     match.playerPerformances = built;
-    await match.save();
-
-    // finalize GW if all matches completed
-    if (match.gameweek) {
-      const gw = await Gameweek.findById(match.gameweek);
-      const gwMatches = await Match.find({ gameweek: gw._id });
-      if (gwMatches.length && gwMatches.every(m => m.isCompleted)) {
-        await finalizeGameweek(gw);
-      }
+    
+    try {
+      await match.save();
+      console.log('Match saved successfully:', match._id);
+    } catch (matchSaveError) {
+      console.error('Error saving match:', matchSaveError);
+      return res.status(500).json({ error: `Failed to save match: ${matchSaveError.message}` });
     }
+
+    // Finalize gameweek if all matches completed
+   // Update GW standings (live partial) or finalize when all matches done
+if (match.gameweek) {
+  const gw = await Gameweek.findById(match.gameweek);
+  if (gw) {
+    const gwMatches = await Match.find({ gameweek: gw._id });
+    const allDone = gwMatches.length > 0 && gwMatches.every(m => m.isCompleted);
+    if (allDone) {
+      await finalizeGameweek(gw); // finalize and mark completed
+    } else {
+      await finalizeGameweek(gw, { finalize: false }); // live partial update so team points reflect manual changes
+    }
+  }
+}
+
 
     const updated = await Match.findById(match._id).populate('homeClub awayClub gameweek');
     res.json({ message: 'Match results saved', match: updated });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    
+  } catch (e) { 
+    console.error('Match results update error:', e);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 // ========== ADMIN CRUD for Teams ==========

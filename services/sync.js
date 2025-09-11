@@ -143,7 +143,8 @@ function extractStatsFromAPIPlayer(stat) {
     saves: goals.saves || 0,
     penaltiesSaved: penalty.saved || 0,
     penaltiesMissed: penalty.missed || 0,
-    ownGoals: goals.own || 0
+    ownGoals: goals.own || 0,
+    isManOfTheMatch: false // Default false for API sync, set manually
   };
 }
 
@@ -334,7 +335,10 @@ function applyAutoSubs(starters, benchOrder, perfMinutesMap, playersById) {
   return resultXI; // final XI playerIds
 }
 
-async function finalizeGameweek(gw) {
+// Replace entire finalizeGameweek function
+async function finalizeGameweek(gw, options = { finalize: true }) {
+  const finalizeFlag = options?.finalize !== false; // default true
+
   // Aggregate per-player points and minutes for this GW
   const matches = await Match.find({ gameweek: gw._id }).lean();
   const perfPointsMap = new Map(); // pid -> { points, minutes }
@@ -351,8 +355,10 @@ async function finalizeGameweek(gw) {
   // All users who have any team
   const users = await User.find({ 'team.0': { $exists: true } });
   if (!users.length) {
-    gw.isCompleted = true;
-    await gw.save();
+    if (finalizeFlag) {
+      gw.isCompleted = true;
+      await gw.save();
+    }
     return;
   }
 
@@ -363,16 +369,18 @@ async function finalizeGameweek(gw) {
   const playersById = new Map(players.map(p => [String(p._id), { position: p.position, price: p.price }]));
 
   for (const user of users) {
+    user.weeklyPoints = user.weeklyPoints || [];
+
     // If lineup invalid/missing, create a default 3-4-3
     let starters = user.team.filter(t => t.starting).map(t => String(t.player));
-    let benchOrder = user.team.filter(t => !t.starting && Number.isFinite(t.benchOrder))
-                              .sort((a, b) => a.benchOrder - b.benchOrder)
-                              .map(t => String(t.player));
+    let benchOrder = user.team
+      .filter(t => !t.starting && Number.isFinite(t.benchOrder))
+      .sort((a, b) => a.benchOrder - b.benchOrder)
+      .map(t => String(t.player));
 
     let captainId = user.team.find(t => t.captain)?.player?.toString() || null;
     let viceId = user.team.find(t => t.viceCaptain)?.player?.toString() || null;
 
-    // Repair lineup if not exactly 11 starters or <1 bench, or missing C/VC
     if (starters.length !== 11 || benchOrder.length === 0 || !captainId || !viceId) {
       const defLine = buildDefaultLineup(user, playersById);
       starters = defLine.starters;
@@ -400,29 +408,35 @@ async function finalizeGameweek(gw) {
     const minutesOf = (pid) => perfPointsMap.get(pid)?.minutes || 0;
     for (const pid of finalXI) total += pointsOf(pid);
 
-    // Apply C/VC: if C played (any minutes), double C; else if VC played, double VC
+    // Apply C/VC: if C played, double C; else if VC played, double VC
     if (captainId && minutesOf(captainId) > 0) {
       total += pointsOf(captainId);
     } else if (viceId && minutesOf(viceId) > 0) {
       total += pointsOf(viceId);
     }
 
-    // Apply transfer penalty for this GW
+    // Apply transfer penalty for this GW (optional/if tracked)
     const penalty = user.transferPenalties?.find(p => p.gameweek === gw.weekNumber)?.penalty || 0;
     total -= penalty;
 
-    // Save weeklyPoints (overwrite/replace)
+    // Save weeklyPoints (overwrite/replace this GW entry)
     const idx = user.weeklyPoints.findIndex(w => w.gameweek === gw.weekNumber);
     if (idx >= 0) user.weeklyPoints[idx].points = total;
     else user.weeklyPoints.push({ gameweek: gw.weekNumber, points: total });
 
+    // Recompute season total across all GWs
     user.totalPoints = user.weeklyPoints.reduce((sum, w) => sum + (w.points || 0), 0);
+
     await user.save();
   }
 
-  gw.isCompleted = true;
-  await gw.save();
+  // Only mark GW completed if we are finalizing
+  if (finalizeFlag) {
+    gw.isCompleted = true;
+    await gw.save();
+  }
 }
+
 
 async function syncCompletedFixturesAndPoints() {
   // Find matches not completed but whose API status is FT now

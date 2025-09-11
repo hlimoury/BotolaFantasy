@@ -12,6 +12,46 @@
     .admin-sidebar .nav-link { color: #bbb; }
     .admin-sidebar .nav-link.active { background: #0d6efd; color: #fff; }
     .perf-row .form-control, .perf-row .form-select { min-width: 90px; }
+    /* Performance table improvements */
+#perfTable {
+  font-size: 0.85rem;
+}
+
+#perfTable th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+  text-align: center;
+  vertical-align: middle;
+  padding: 8px 4px;
+}
+
+#perfTable td {
+  vertical-align: middle;
+  padding: 6px 4px;
+}
+
+.perf-player-select {
+  font-size: 0.8rem;
+}
+
+#perfTable input[type="number"] {
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+#perfTable .form-check {
+  margin-bottom: 0;
+}
+
+#perfTable small.text-muted {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+/* Make the modal wider for better field visibility */
+#perfModal .modal-dialog {
+  max-width: 90vw;
+}
   </style>
 </head>
 <body>
@@ -230,28 +270,29 @@
             <button type="button" class="btn btn-sm btn-outline-primary" onclick="addPerfRowFromSelect()">Add Player</button>
           </div>
         </div>
-        <div class="table-responsive">
-          <table class="table table-sm" id="perfTable">
-            <thead>
-              <tr>
-                <th>Player</th>
-                <th>Min</th>
-                <th>G</th>
-                <th>A</th>
-                <th>Conc</th>
-                <th>CS</th>
-                <th>YC</th>
-                <th>RC</th>
-                <th>Saves</th>
-                <th>Pen Saved</th>
-                <th>Pen Miss</th>
-                <th>OG</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="perfTbody"></tbody>
-          </table>
-        </div>
+        <!-- Performances Modal - Replace the existing modal body table section -->
+<div class="table-responsive">
+  <table class="table table-sm table-bordered" id="perfTable">
+    <thead class="table-light">
+      <tr>
+        <th style="min-width:200px;">Player</th>
+        <th style="min-width:80px;">Minutes</th>
+        <th style="min-width:70px;">Goals</th>
+        <th style="min-width:80px;">Assists</th>
+        <th style="min-width:90px;">Conceded</th>
+        <th style="min-width:100px;">Clean Sheet</th>
+        <th style="min-width:100px;">Yellow Card</th>
+        <th style="min-width:90px;">Red Card</th>
+        <th style="min-width:70px;">Saves</th>
+        <th style="min-width:110px;">Penalties Saved</th>
+        <th style="min-width:120px;">Penalties Missed</th>
+        <th style="min-width:100px;">Own Goals</th>
+        <th style="min-width:80px;">Actions</th>
+      </tr>
+    </thead>
+    <tbody id="perfTbody"></tbody>
+  </table>
+</div>
         <small class="text-muted">Points will be calculated automatically on save.</small>
       </div>
       <div class="modal-footer">

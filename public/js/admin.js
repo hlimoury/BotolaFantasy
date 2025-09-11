@@ -511,29 +511,53 @@ async function fixMatchIndex() {
 
 
 // Gameweeks
+// Gameweeks
 async function loadGameweeks() {
   const res = await fetch('/api/admin/gameweeks', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
   ADMIN_GWS = await res.json();
   const container = document.getElementById('gameweeksList');
-  if (container) {
-    container.innerHTML = ADMIN_GWS.map(g => `
-      <div class="col-md-4 mb-3">
-        <div class="card">
-          <div class="card-body">
-            <h5>Gameweek ${g.weekNumber}</h5>
-            <p class="text-muted">${g.startDate ? new Date(g.startDate).toLocaleDateString() : '—'} - ${g.endDate ? new Date(g.endDate).toLocaleDateString() : '—'}</p>
-            <p class="text-muted">Deadline: ${g.deadline ? new Date(g.deadline).toLocaleString() : '—'}</p>
-            <span class="badge ${g.isActive ? 'bg-success' : 'bg-secondary'}">${g.isActive ? 'Active' : 'Inactive'}</span>
-            <div class="mt-2 d-flex flex-wrap gap-2">
-              <button class="btn btn-sm btn-primary" onclick="activateGW('${g._id}')">Activate</button>
-              <button class="btn btn-sm btn-outline-secondary" onclick="openGWModal('edit','${g._id}')">Edit</button>
-              <button class="btn btn-sm btn-outline-danger" onclick="deleteGW('${g._id}')">Delete</button>
-            </div>
+  if (!container) return;
+
+  container.innerHTML = ADMIN_GWS.map(g => `
+    <div class="col-md-4 mb-3">
+      <div class="card">
+        <div class="card-body">
+          <h5>Gameweek ${g.weekNumber}</h5>
+          <p class="text-muted">
+            ${g.startDate ? new Date(g.startDate).toLocaleDateString() : '—'} - ${g.endDate ? new Date(g.endDate).toLocaleDateString() : '—'}
+          </p>
+          <p class="text-muted">Deadline: ${g.deadline ? new Date(g.deadline).toLocaleString() : '—'}</p>
+          <span class="badge ${g.isCompleted ? 'bg-success' : (g.isActive ? 'bg-primary' : 'bg-secondary')}">
+            ${g.isCompleted ? 'Completed' : (g.isActive ? 'Active' : 'Inactive')}
+          </span>
+          <div class="mt-2 d-flex flex-wrap gap-2">
+            <button class="btn btn-sm btn-primary" onclick="activateGW('${g._id}')">Activate</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="openGWModal('edit','${g._id}')">Edit</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteGW('${g._id}')">Delete</button>
+            ${g.isCompleted ? '' : `<button class="btn btn-sm btn-outline-success" onclick="finalizeGWNow('${g._id}')">Finalize Now</button>`}
           </div>
         </div>
-      </div>`).join('');
-  }
+      </div>
+    </div>
+  `).join('');
 }
+
+async function finalizeGWNow(id) {
+  if (!confirm('Finalize this gameweek now? This will lock and compute points for the GW.')) return;
+  const res = await fetch(`/api/admin/gameweeks/${id}/finalize`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Failed to finalize gameweek');
+    return;
+  }
+  // Refresh GW list and team/leaderboard points
+  await Promise.all([loadGameweeks(), loadTeams(), loadUsers()]);
+  alert('Gameweek finalized.');
+}
+
 async function activateGW(id) {
   await fetch(`/api/admin/gameweeks/${id}/activate`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
   await loadGameweeks();
@@ -589,6 +613,7 @@ async function deleteGW(id) {
 }
 
 // Performances modal & helpers
+
 function openPerfModal(matchId) {
   const modalEl = document.getElementById('perfModal');
   const modal = new bootstrap.Modal(modalEl);
@@ -598,42 +623,75 @@ function openPerfModal(matchId) {
   document.getElementById('perfStatus').value = '';
   document.getElementById('perfTbody').innerHTML = '';
   document.getElementById('perfPlayerSelect').innerHTML = '<option>Loading...</option>';
+  
   fetch(`/api/admin/matches/${matchId}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
     .then(m => {
-      if (!m || m.error) return alert(m.error || 'Failed to load match');
+      if (!m || m.error) {
+        alert(m?.error || 'Failed to load match');
+        return;
+      }
+      
       document.getElementById('perfHomeScore').value = m.homeScore ?? '';
       document.getElementById('perfAwayScore').value = m.awayScore ?? '';
       document.getElementById('perfStatus').value = m.status || '';
+      
+      // Build player options for both teams
+      const homeClubId = m.homeClub?._id;
+      const awayClubId = m.awayClub?._id;
+      
       const opts = ADMIN_PLAYERS
-        .filter(p => String(p.club?._id) === String(m.homeClub?._id) || String(p.club?._id) === String(m.awayClub?._id))
-        .map(p => `<option value="${p._id}">${p.name} — ${p.position} — ${p.club?.name || ''}</option>`).join('');
+        .filter(p => {
+          const clubId = p.club?._id;
+          return clubId && (String(clubId) === String(homeClubId) || String(clubId) === String(awayClubId));
+        })
+        .map(p => `<option value="${p._id}">${p.name} — ${p.position} — ${p.club?.name || ''}</option>`)
+        .join('');
+      
       document.getElementById('perfPlayerSelect').innerHTML = `<option value="">-- select player --</option>` + opts;
-      if (Array.isArray(m.playerPerformances) && m.playerPerformances.length) {
+      
+      // Add existing performances
+      if (Array.isArray(m.playerPerformances) && m.playerPerformances.length > 0) {
+        console.log('Loading existing performances:', m.playerPerformances.length);
         for (const perf of m.playerPerformances) {
           addPerfRow(prefillPerformanceRow(perf));
         }
       }
+      
       modal.show();
-    }).catch(err => { console.error(err); alert('Error loading match'); });
+    })
+    .catch(err => { 
+      console.error('Error loading match:', err); 
+      alert('Error loading match: ' + err.message); 
+    });
 }
 
+
 function prefillPerformanceRow(perf) {
+  // Handle both ObjectId references and populated objects
+  const playerId = perf.player?._id || perf.player;
+  const playerName = perf.player?.name || '';
+  
   return {
-    playerId: perf.player?._id || perf.player,
-    minutesPlayed: perf.minutesPlayed || 0,
-    goals: perf.goals || 0,
-    assists: perf.assists || 0,
-    conceded: perf.conceded || 0,
-    cleanSheet: perf.cleanSheet ? true : false,
-    yellowCard: perf.yellowCard ? true : false,
-    redCard: perf.redCard ? true : false,
-    saves: perf.saves || 0,
-    penaltiesSaved: perf.penaltiesSaved || 0,
-    penaltiesMissed: perf.penaltiesMissed || 0,
-    ownGoals: perf.ownGoals || 0
+    playerId: playerId,
+    name: playerName,
+    minutesPlayed: Number(perf.minutesPlayed) || 0,
+    goals: Number(perf.goals) || 0,
+    assists: Number(perf.assists) || 0,
+    conceded: Number(perf.conceded) || 0,
+    cleanSheet: !!perf.cleanSheet,
+    yellowCard: !!perf.yellowCard,
+    redCard: !!perf.redCard,
+    saves: Number(perf.saves) || 0,
+    penaltiesSaved: Number(perf.penaltiesSaved) || 0,
+    penaltiesMissed: Number(perf.penaltiesMissed) || 0,
+    ownGoals: Number(perf.ownGoals) || 0
   };
 }
+
 
 function buildPerfPlayerOptions() {
   return ADMIN_PLAYERS.map(p => `<option value="${p._id}">${p.name} — ${p.position} — ${p.club?.name || ''}</option>`).join('');
@@ -661,89 +719,252 @@ function addPerfRowFromSelect() {
   });
 }
 
+
 function addPerfRow(data = {}) {
   const tbody = document.getElementById('perfTbody');
   const tr = document.createElement('tr');
   tr.dataset.playerId = data.playerId || '';
+  
+  // Ensure all numeric values are properly set
+  const minutesPlayed = Number(data.minutesPlayed) || 0;
+  const goals = Number(data.goals) || 0;
+  const assists = Number(data.assists) || 0;
+  const conceded = Number(data.conceded) || 0;
+  const saves = Number(data.saves) || 0;
+  const penaltiesSaved = Number(data.penaltiesSaved) || 0;
+  const penaltiesMissed = Number(data.penaltiesMissed) || 0;
+  const ownGoals = Number(data.ownGoals) || 0;
+  
   tr.innerHTML = `
-    <td style="min-width:180px;">
-      <select class="form-select form-select-sm perf-player-select" onchange="onPerfPlayerChange(this)">
-        <option value="">-- select player --</option>
+    <td style="min-width:200px;">
+      <select class="form-select form-select-sm perf-player-select" onchange="onPerfPlayerChange(this)" style="min-width: 180px;">
+        <option value="">-- Select Player --</option>
         ${buildPerfPlayerOptions()}
       </select>
+      <small class="text-muted d-block mt-1" id="player-info-${tr.dataset.playerId || Math.random()}"></small>
     </td>
-    <td><input type="number" class="form-control form-control-sm perf-min" value="${data.minutesPlayed || 0}"></td>
-    <td><input type="number" class="form-control form-control-sm perf-goals" value="${data.goals || 0}"></td>
-    <td><input type="number" class="form-control form-control-sm perf-assists" value="${data.assists || 0}"></td>
-    <td><input type="number" class="form-control form-control-sm perf-conceded" value="${data.conceded || 0}"></td>
-    <td><input type="checkbox" class="form-check-input perf-cs" ${data.cleanSheet ? 'checked' : ''}></td>
-    <td><input type="checkbox" class="form-check-input perf-yc" ${data.yellowCard ? 'checked' : ''}></td>
-    <td><input type="checkbox" class="form-check-input perf-rc" ${data.redCard ? 'checked' : ''}></td>
-    <td><input type="number" class="form-control form-control-sm perf-saves" value="${data.saves || 0}"></td>
-    <td><input type="number" class="form-control form-control-sm perf-ps" value="${data.penaltiesSaved || 0}"></td>
-    <td><input type="number" class="form-control form-control-sm perf-pm" value="${data.penaltiesMissed || 0}"></td>
-    <td><input type="number" class="form-control form-control-sm perf-og" value="${data.ownGoals || 0}"></td>
-    <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()">Remove</button></td>
+    <td style="min-width:80px;">
+      <input type="number" class="form-control form-control-sm perf-min" value="${minutesPlayed}" min="0" max="120" style="width: 70px;">
+      <small class="text-muted">mins</small>
+    </td>
+    <td style="min-width:70px;">
+      <input type="number" class="form-control form-control-sm perf-goals" value="${goals}" min="0" max="10" style="width: 60px;">
+    </td>
+    <td style="min-width:80px;">
+      <input type="number" class="form-control form-control-sm perf-assists" value="${assists}" min="0" max="10" style="width: 70px;">
+    </td>
+    <td style="min-width:90px;">
+      <input type="number" class="form-control form-control-sm perf-conceded" value="${conceded}" min="0" max="10" style="width: 80px;">
+      <small class="text-muted">goals</small>
+    </td>
+    <td style="min-width:100px;" class="text-center">
+      <div class="form-check d-flex justify-content-center">
+        <input type="checkbox" class="form-check-input perf-cs" ${data.cleanSheet ? 'checked' : ''}>
+        <label class="form-check-label ms-2">CS</label>
+      </div>
+    </td>
+    <td style="min-width:100px;" class="text-center">
+      <div class="form-check d-flex justify-content-center">
+        <input type="checkbox" class="form-check-input perf-yc" ${data.yellowCard ? 'checked' : ''}>
+        <label class="form-check-label ms-2">YC</label>
+      </div>
+    </td>
+    <td style="min-width:90px;" class="text-center">
+      <div class="form-check d-flex justify-content-center">
+        <input type="checkbox" class="form-check-input perf-rc" ${data.redCard ? 'checked' : ''}>
+        <label class="form-check-label ms-2">RC</label>
+      </div>
+    </td>
+    <td style="min-width:70px;">
+      <input type="number" class="form-control form-control-sm perf-saves" value="${saves}" min="0" max="20" style="width: 60px;">
+    </td>
+    <td style="min-width:110px;">
+      <input type="number" class="form-control form-control-sm perf-ps" value="${penaltiesSaved}" min="0" max="5" style="width: 60px;">
+      <small class="text-muted d-block">saved</small>
+    </td>
+    <td style="min-width:120px;">
+      <input type="number" class="form-control form-control-sm perf-pm" value="${penaltiesMissed}" min="0" max="5" style="width: 60px;">
+      <small class="text-muted d-block">missed</small>
+    </td>
+    <td style="min-width:100px;">
+      <input type="number" class="form-control form-control-sm perf-og" value="${ownGoals}" min="0" max="5" style="width: 60px;">
+      <small class="text-muted">own</small>
+    </td>
+    <td style="min-width:80px;">
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()" title="Remove Player">
+        <i class="bi bi-trash"></i>
+      </button>
+    </td>
   `;
+  
   tbody.appendChild(tr);
+  
+  // Set the player selection if provided
   if (data.playerId) {
     const sel = tr.querySelector('.perf-player-select');
-    if (sel) sel.value = data.playerId;
+    if (sel) {
+      sel.value = data.playerId;
+      if (!sel.value) {
+        console.warn('Player ID not found in dropdown:', data.playerId);
+      }
+      // Show player info
+      updatePlayerInfo(sel);
+    }
+  }
+}
+
+function updatePlayerInfo(selectElement) {
+  const playerId = selectElement.value;
+  const row = selectElement.closest('tr');
+  const infoElement = row.querySelector('small[id^="player-info"]');
+  
+  if (!playerId || !infoElement) return;
+  
+  const player = ADMIN_PLAYERS.find(p => String(p._id) === String(playerId));
+  if (player) {
+    infoElement.textContent = `${player.position} - ${player.club?.name || 'No club'}`;
+  } else {
+    infoElement.textContent = '';
+  }
+}
+
+function handleMotmChange(checkbox) {
+  if (checkbox.checked) {
+    // Uncheck all other MOTM checkboxes
+    document.querySelectorAll('.perf-motm').forEach(cb => {
+      if (cb !== checkbox) cb.checked = false;
+    });
   }
 }
 
 function onPerfPlayerChange(sel) {
   const val = sel.value;
-  if (!val) return;
+  if (!val) {
+    updatePlayerInfo(sel);
+    return;
+  }
+  
   const rows = Array.from(document.querySelectorAll('#perfTbody tr'));
   const ids = rows.map(r => r.querySelector('.perf-player-select')?.value).filter(Boolean);
   const dup = ids.filter(i => i === val);
+  
   if (dup.length > 1) {
     alert('Player already added in another row');
     sel.value = '';
+    updatePlayerInfo(sel);
+    return;
   }
+  
+  updatePlayerInfo(sel);
 }
-
+// Fixed submitPerfForm function in admin.js
 async function submitPerfForm(e) {
   e.preventDefault();
+  
   const matchId = document.getElementById('perfMatchId').value;
+  if (!matchId) {
+    alert('No match ID found');
+    return;
+  }
+  
   const homeScore = document.getElementById('perfHomeScore').value !== '' ? Number(document.getElementById('perfHomeScore').value) : undefined;
   const awayScore = document.getElementById('perfAwayScore').value !== '' ? Number(document.getElementById('perfAwayScore').value) : undefined;
   const status = document.getElementById('perfStatus').value || undefined;
 
   const rows = Array.from(document.querySelectorAll('#perfTbody tr'));
   const perfArr = [];
+  
+  let hasError = false;
+  
   for (const r of rows) {
     const playerId = r.querySelector('.perf-player-select')?.value;
-    if (!playerId) continue;
+    if (!playerId) {
+      console.log('Skipping row with no player selected');
+      continue;
+    }
+    
+    // Get all values and ensure they're numbers
+    const minutesPlayed = Number(r.querySelector('.perf-min')?.value || 0);
+    const goals = Number(r.querySelector('.perf-goals')?.value || 0);
+    const assists = Number(r.querySelector('.perf-assists')?.value || 0);
+    const conceded = Number(r.querySelector('.perf-conceded')?.value || 0);
+    const saves = Number(r.querySelector('.perf-saves')?.value || 0);
+    const penaltiesSaved = Number(r.querySelector('.perf-ps')?.value || 0);
+    const penaltiesMissed = Number(r.querySelector('.perf-pm')?.value || 0);
+    const ownGoals = Number(r.querySelector('.perf-og')?.value || 0);
+    
+    // Check for invalid values
+    if (isNaN(minutesPlayed) || isNaN(goals) || isNaN(assists) || isNaN(conceded) || 
+        isNaN(saves) || isNaN(penaltiesSaved) || isNaN(penaltiesMissed) || isNaN(ownGoals)) {
+      alert('Please ensure all numeric fields contain valid numbers');
+      hasError = true;
+      break;
+    }
+    
     perfArr.push({
       player: playerId,
-      minutesPlayed: Number(r.querySelector('.perf-min')?.value || 0),
-      goals: Number(r.querySelector('.perf-goals')?.value || 0),
-      assists: Number(r.querySelector('.perf-assists')?.value || 0),
-      conceded: Number(r.querySelector('.perf-conceded')?.value || 0),
+      minutesPlayed: minutesPlayed,
+      goals: goals,
+      assists: assists,
+      conceded: conceded,
       cleanSheet: !!r.querySelector('.perf-cs')?.checked,
       yellowCard: !!r.querySelector('.perf-yc')?.checked,
       redCard: !!r.querySelector('.perf-rc')?.checked,
-      saves: Number(r.querySelector('.perf-saves')?.value || 0),
-      penaltiesSaved: Number(r.querySelector('.perf-ps')?.value || 0),
-      penaltiesMissed: Number(r.querySelector('.perf-pm')?.value || 0),
-      ownGoals: Number(r.querySelector('.perf-og')?.value || 0)
+      saves: saves,
+      penaltiesSaved: penaltiesSaved,
+      penaltiesMissed: penaltiesMissed,
+      ownGoals: ownGoals
     });
   }
+  
+  if (hasError) return;
+  
+  const payload = { 
+    homeScore, 
+    awayScore, 
+    status, 
+    playerPerformances: perfArr 
+  };
+  
+  console.log('Submitting match results:', matchId, payload);
+  
+  try {
+    const res = await fetch(`/api/admin/matches/${matchId}/results`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json', 
+        Authorization: `Bearer ${localStorage.getItem('token')}` 
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) { 
+      console.error('Server error:', data);
+      alert(data.error || 'Failed to save results'); 
+      return; 
+    }
+    
+    console.log('Match results saved successfully');
+    bootstrap.Modal.getInstance(document.getElementById('perfModal')).hide();
+    
+    // Refresh all relevant sections
+    // Replace the existing refresh section after a successful save with this:
+bootstrap.Modal.getInstance(document.getElementById('perfModal')).hide();
+await Promise.all([
+  loadMatches(),
+  loadGameweeks(),
+  loadPlayers(),
+  loadTeams(),
+  loadUsers()
+]);
 
-  const payload = { homeScore, awayScore, status, playerPerformances: perfArr };
-  const res = await fetch(`/api/admin/matches/${matchId}/results`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (!res.ok) { alert(data.error || 'Failed to save results'); return; }
-  bootstrap.Modal.getInstance(document.getElementById('perfModal')).hide();
-  await loadMatches();
-  await loadGameweeks();
-  await loadPlayers();
+    
+  } catch (error) {
+    console.error('Network error submitting match results:', error);
+    alert('Network error: ' + error.message);
+  }
 }
 
 // Users

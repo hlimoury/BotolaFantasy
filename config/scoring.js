@@ -31,6 +31,7 @@ module.exports = {
       per: 3,   // every 3 saves
       points: 1
     },
+    manOfTheMatch: 3,
     conceded: {
       GK: -1, // each 2 goals conceded -1
       DEF: -1,

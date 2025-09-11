@@ -1,3 +1,4 @@
+// gameweekSchema.js
 const mongoose = require('mongoose');
 
 const gameweekSchema = new mongoose.Schema({
