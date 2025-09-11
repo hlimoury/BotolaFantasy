@@ -27,9 +27,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   try {
-    await Promise.all([loadPlayers(), loadClubs()]);
+    // IMPORTANT: load players first, then derive clubs from them
+    await loadPlayers();
+    await loadClubs();
     await loadUserTeam();
-    await loadActiveGWPoints(); // load live GW points after team + clubs
+    await loadActiveGWPoints();
   } catch (e) {
     console.error(e);
   }
@@ -58,7 +60,7 @@ async function loadPlayers() {
 
 async function loadClubs() {
   try {
-    // derive clubs from allPlayers
+    // derive clubs from allPlayers (ensures only clubs with players show)
     const map = new Map();
     for (const p of allPlayers) {
       const c = p.club;
@@ -95,7 +97,7 @@ async function loadUserTeam() {
     const teamArr = Array.isArray(data.team) ? data.team : [];
     teamCreated = teamArr.length === 15;
 
-    // Captain/VC
+    // Captain/VC from saved squad
     const capSlot = teamArr.find(t => t.captain);
     const vcSlot = teamArr.find(t => t.viceCaptain);
     captainId = capSlot?.player?._id ? String(capSlot.player._id) : null;
@@ -170,10 +172,16 @@ async function loadUserTeam() {
         }
       }
 
-      // Bench: 0 GK, 1..3 outfield
-      if (benchDocs[0]) place(benchDocs[0], 'BENCH', 0);
-      for (let i = 1; i <= 3; i++) {
-        if (benchDocs[i]) place(benchDocs[i], 'BENCH', i);
+      // Bench: enforce GK at 0; then outfield 1: DEF, 2: MID, 3: FWD if available
+      if (benchDocs.length) {
+        const benchGK = benchDocs.find(p => p.position === 'GK');
+        if (benchGK) place(benchGK, 'BENCH', 0);
+        const benchDEF = benchDocs.find(p => p.position === 'DEF');
+        const benchMID = benchDocs.find(p => p.position === 'MID');
+        const benchFWD = benchDocs.find(p => p.position === 'FWD');
+        if (benchDEF) place(benchDEF, 'BENCH', 1);
+        if (benchMID) place(benchMID, 'BENCH', 2);
+        if (benchFWD) place(benchFWD, 'BENCH', 3);
       }
 
       // Fill any missing bench slots from the rest of team not in XI
@@ -185,11 +193,18 @@ async function loadUserTeam() {
         const gk = notInXI.find(p => p.position === 'GK' && !currentBenchIds.has(String(p._id)));
         if (gk) place(gk, 'BENCH', 0);
       }
-      for (let i = 1; i <= 3; i++) {
-        if (!selectedPlayers.find(p => p.slotPosition === 'BENCH' && p.slotIndex === i)) {
-          const of = notInXI.find(p => p.position !== 'GK' && !currentBenchIds.has(String(p._id)));
-          if (of) place(of, 'BENCH', i);
-        }
+      // Fill DEF/MID/FWD if empty
+      if (!selectedPlayers.find(p => p.slotPosition === 'BENCH' && p.slotIndex === 1)) {
+        const def = notInXI.find(p => p.position === 'DEF' && !currentBenchIds.has(String(p._id)));
+        if (def) place(def, 'BENCH', 1);
+      }
+      if (!selectedPlayers.find(p => p.slotPosition === 'BENCH' && p.slotIndex === 2)) {
+        const mid = notInXI.find(p => p.position === 'MID' && !currentBenchIds.has(String(p._id)));
+        if (mid) place(mid, 'BENCH', 2);
+      }
+      if (!selectedPlayers.find(p => p.slotPosition === 'BENCH' && p.slotIndex === 3)) {
+        const fwd = notInXI.find(p => p.position === 'FWD' && !currentBenchIds.has(String(p._id)));
+        if (fwd) place(fwd, 'BENCH', 3);
       }
     } else {
       // Fallback simple placement using team
@@ -203,16 +218,14 @@ async function loadUserTeam() {
       teamPlayers.filter(p => p.position === 'MID').slice(0, 4).forEach(p => place(p, 'START', idx++));
       idx = 9;
       teamPlayers.filter(p => p.position === 'FWD').slice(0, 2).forEach(p => place(p, 'START', idx++));
-      // Bench: GK then 3 outfield
+      // Bench: GK then DEF, MID, FWD if available
       if (gks[1]) place(gks[1], 'BENCH', 0);
-      const outRem = [
-        ...teamPlayers.filter(p => p.position === 'DEF').slice(4),
-        ...teamPlayers.filter(p => p.position === 'MID').slice(4),
-        ...teamPlayers.filter(p => p.position === 'FWD').slice(2)
-      ];
-      for (let i = 0; i < 3 && outRem[i]; i++) {
-        place(outRem[i], 'BENCH', i + 1);
-      }
+      const defRem = teamPlayers.filter(p => p.position === 'DEF').slice(4);
+      const midRem = teamPlayers.filter(p => p.position === 'MID').slice(4);
+      const fwdRem = teamPlayers.filter(p => p.position === 'FWD').slice(2);
+      if (defRem[0]) place(defRem[0], 'BENCH', 1);
+      if (midRem[0]) place(midRem[0], 'BENCH', 2);
+      if (fwdRem[0]) place(fwdRem[0], 'BENCH', 3);
     }
 
     updateTeamDisplay();
@@ -253,10 +266,8 @@ async function loadActiveGWPoints() {
     gwPointsMap = data.perPlayer || {};
     gwTeamTotal = Number(data.teamTotal || 0);
 
-    // Update Points in stats bar to live team total for active GW
+    // Update GW points + status
     setText('totalPoints', gwTeamTotal.toString());
-
-    // Update GW status
     const gwStatusEl = document.getElementById('gwStatus');
     if (gwStatusEl) {
       const locked = !!data.locked;
@@ -264,7 +275,7 @@ async function loadActiveGWPoints() {
       gwStatusEl.innerHTML = `${badge}${gwWeekNumber ? ` <small class="ms-1">GW ${gwWeekNumber}</small>` : ''}`;
     }
 
-    updateTeamDisplay(); // reflect per-player GW points
+    updateTeamDisplay();
   } catch (e) {
     console.error('Error loading active GW points:', e);
   }
@@ -653,7 +664,160 @@ async function saveLineup() {
   }
 }
 
-// Captains modal helpers (kept for compatibility if called)
+// Ensure team is saved before saving captains (used by modal flow)
+async function ensureTeamSaved() {
+  if (teamCreated) return true;
+
+  if (selectedPlayers.length !== 15) {
+    alert('Please complete your squad to 15 players before setting captains.');
+    return false;
+  }
+
+  // Build and save team + lineup
+  const xiOrder = selectedPlayers.filter(p => p.slotPosition === 'START').sort((a, b) => a.slotIndex - b.slotIndex);
+  const benchOrder = selectedPlayers.filter(p => p.slotPosition === 'BENCH').sort((a, b) => a.slotIndex - b.slotIndex);
+  const idsSet = new Set();
+  const teamIds = [];
+  for (const p of [...xiOrder, ...benchOrder]) {
+    if (!idsSet.has(String(p._id))) {
+      teamIds.push(String(p._id));
+      idsSet.add(String(p._id));
+    }
+  }
+  if (teamIds.length !== 15) {
+    alert('Lineup must contain exactly your 15 players once.');
+    return false;
+  }
+
+  const team = teamIds.map(id => ({
+    player: id,
+    captain: String(id) === String(captainId),
+    viceCaptain: String(id) === String(viceCaptainId)
+  }));
+
+  const token = localStorage.getItem('token');
+  // Save squad
+  let res = await fetch('/api/teams/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ team })
+  });
+  let data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Failed to save team');
+    return false;
+  }
+
+  // Save lineup
+  const xiIds = xiOrder.map(p => p._id);
+  const benchIds = benchOrder.map(p => p._id);
+  res = await fetch('/api/teams/lineup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ startingXI: xiIds, benchOrder: benchIds })
+  });
+  data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Failed to save lineup');
+    return false;
+  }
+
+  teamCreated = true;
+  return true;
+}
+
+// Auto-Complete: fill exact formation and bench (GK, DEF, MID, FWD) within budget
+async function autoComplete() {
+  // Build remaining slots
+  const desiredStart = [
+    { pos: 'GK', slotPosition: 'START', slotIndex: 0 },
+    { pos: 'DEF', slotPosition: 'START', slotIndex: 1 },
+    { pos: 'DEF', slotPosition: 'START', slotIndex: 2 },
+    { pos: 'DEF', slotPosition: 'START', slotIndex: 3 },
+    { pos: 'DEF', slotPosition: 'START', slotIndex: 4 },
+    { pos: 'MID', slotPosition: 'START', slotIndex: 5 },
+    { pos: 'MID', slotPosition: 'START', slotIndex: 6 },
+    { pos: 'MID', slotPosition: 'START', slotIndex: 7 },
+    { pos: 'MID', slotPosition: 'START', slotIndex: 8 },
+    { pos: 'FWD', slotPosition: 'START', slotIndex: 9 },
+    { pos: 'FWD', slotPosition: 'START', slotIndex: 10 }
+  ];
+  const desiredBench = [
+    { pos: 'GK', slotPosition: 'BENCH', slotIndex: 0 },
+    { pos: 'DEF', slotPosition: 'BENCH', slotIndex: 1 },
+    { pos: 'MID', slotPosition: 'BENCH', slotIndex: 2 },
+    { pos: 'FWD', slotPosition: 'BENCH', slotIndex: 3 }
+  ];
+
+  // Compute remaining budget
+  const currentSpend = selectedPlayers.reduce((sum, p) => sum + Number(p.price || 0), 0);
+  let remainingBudget = totalBudget - currentSpend;
+
+  // Helper: current selected ids
+  const selectedIds = new Set(selectedPlayers.map(p => String(p._id)));
+
+  // Candidates per position sorted by cheapest first (tie-break by higher points)
+  const byPos = {
+    GK: allPlayers.filter(p => p.position === 'GK').sort((a, b) => (a.price - b.price) || ((b.totalPoints || 0) - (a.totalPoints || 0))),
+    DEF: allPlayers.filter(p => p.position === 'DEF').sort((a, b) => (a.price - b.price) || ((b.totalPoints || 0) - (a.totalPoints || 0))),
+    MID: allPlayers.filter(p => p.position === 'MID').sort((a, b) => (a.price - b.price) || ((b.totalPoints || 0) - (a.totalPoints || 0))),
+    FWD: allPlayers.filter(p => p.position === 'FWD').sort((a, b) => (a.price - b.price) || ((b.totalPoints || 0) - (a.totalPoints || 0))),
+  };
+
+  // Helper: try to fill a single slot
+  const fillSlot = (slot) => {
+    if (selectedPlayers.find(p => p.slotPosition === slot.slotPosition && p.slotIndex === slot.slotIndex)) return true;
+    const list = byPos[slot.pos];
+    for (const cand of list) {
+      const id = String(cand._id);
+      if (selectedIds.has(id)) continue;
+      if (slot.slotPosition === 'BENCH' && slot.slotIndex > 0 && cand.position === 'GK') continue;
+      const price = Number(cand.price || 0);
+      if (price <= remainingBudget) {
+        selectedPlayers.push({ ...cand, _id: id, slotPosition: slot.slotPosition, slotIndex: slot.slotIndex });
+        selectedIds.add(id);
+        remainingBudget -= price;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Fill starters
+  for (const slot of desiredStart) {
+    if (!fillSlot(slot)) {
+      alert(`Auto-complete failed: not enough budget or ${slot.pos}s available for starters.`);
+      updateTeamDisplay(); updateUI();
+      return;
+    }
+  }
+
+  // Fill bench exactly (GK, DEF, MID, FWD)
+  for (const slot of desiredBench) {
+    if (!fillSlot(slot)) {
+      alert(`Auto-complete failed: not enough budget or ${slot.pos}s available for bench.`);
+      updateTeamDisplay(); updateUI();
+      return;
+    }
+  }
+
+  // Auto-assign captain and vice-captain if not set
+  if (!captainId || !viceCaptainId) {
+    const starters = selectedPlayers.filter(p => p.slotPosition === 'START');
+    const sortedStarters = starters.sort((a, b) => (Number(b.totalPoints) || 0) - (Number(a.totalPoints) || 0));
+    if (!captainId && sortedStarters[0]) captainId = String(sortedStarters[0]._id);
+    if (!viceCaptainId && sortedStarters[1]) {
+      const vc = sortedStarters.find(p => String(p._id) !== String(captainId));
+      if (vc) viceCaptainId = String(vc._id);
+    }
+  }
+
+  updateTeamDisplay();
+  updateUI();
+  alert('Team auto-completed successfully!');
+}
+
+// Old captains save (prompt flow) retained for compatibility
 function openCaptainsModal() {
   if (selectedPlayers.length < 11) {
     alert('Select your starting XI first.');
@@ -733,3 +897,6 @@ function logout() {
   localStorage.removeItem('user');
   window.location.href = '/login';
 }
+
+// Expose ensureTeamSaved globally for inline modal script
+window.ensureTeamSaved = ensureTeamSaved;

@@ -1369,201 +1369,171 @@
   <script src="/js/dashboard.js"></script>
 
   <script>
-      let selectedCaptainId = null;
-        let selectedViceCaptainId = null;
-
-        // Enhanced saveCaptains function - replace the old one
-        function saveCaptains() {
-            if (selectedPlayers.length === 0) {
-                alert('Add players to your team first');
-                return;
-            }
-
-            // Get starting XI players only (captains must be in starting XI)
-            const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
-            
-            if (startingPlayers.length === 0) {
-                alert('You need players in your starting XI to select captains');
-                return;
-            }
-
-            // Set current selections
-            selectedCaptainId = captainId;
-            selectedViceCaptainId = viceCaptainId;
-
-            // Populate and show modal
-            populateCaptainModal(startingPlayers);
-            document.getElementById('captainModal').classList.add('active');
-        }
-
-        // Replace the existing populateCaptainModal function with this corrected version
-
-function populateCaptainModal(startingPlayers) {
-    const captainList = document.getElementById('captainPlayersList');
-    const viceList = document.getElementById('viceCaptainPlayersList');
-    
-    // Sort players by points (highest first)
-    const sortedPlayers = startingPlayers.sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
-    
-    // Generate player cards for captain selection
-    captainList.innerHTML = sortedPlayers.map(player => {
+    let selectedCaptainId = null;
+    let selectedViceCaptainId = null;
+  
+    // Open the captains modal
+    function saveCaptains() {
+      if (selectedPlayers.length < 11) {
+        alert('Select your starting XI first.');
+        return;
+      }
+  
+      selectedCaptainId = captainId;
+      selectedViceCaptainId = viceCaptainId;
+  
+      const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
+      populateCaptainModal(startingPlayers);
+      document.getElementById('captainModal').classList.add('active');
+    }
+  
+    function populateCaptainModal(startingPlayers) {
+      const captainList = document.getElementById('captainPlayersList');
+      const viceList = document.getElementById('viceCaptainPlayersList');
+  
+      const sortedPlayers = startingPlayers.slice().sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
+  
+      captainList.innerHTML = sortedPlayers.map(player => {
         const playerId = String(player._id);
         const isSelected = String(selectedCaptainId) === playerId;
-        
         return `
-            <div class="player-card ${isSelected ? 'selected-captain' : ''}" 
-                 onclick="selectCaptain('${playerId}')">
-                ${isSelected ? '<div class="selection-badge captain-badge-large">C</div>' : ''}
-                <div class="player-info">
-                    <div class="player-name">${escapeHtml(player.name)}</div>
-                    <div class="player-details">
-                        ${escapeHtml(player.club?.shortName || player.club?.name || 'No Club')} • ${player.position}
-                        <span class="starting-badge">Starting XI</span>
-                    </div>
-                </div>
-                <div class="player-stats">
-                    <div class="player-points">${player.totalPoints || 0} pts</div>
-                    <div class="player-price">${Number(player.price || 0)}M</div>
-                </div>
+          <div class="player-card ${isSelected ? 'selected-captain' : ''}" onclick="selectCaptain('${playerId}')">
+            ${isSelected ? '<div class="selection-badge captain-badge-large">C</div>' : ''}
+            <div class="player-info">
+              <div class="player-name">${escapeHtml(player.name)}</div>
+              <div class="player-details">
+                ${escapeHtml(player.club?.shortName || player.club?.name || 'No Club')} • ${player.position}
+                <span class="starting-badge">Starting XI</span>
+              </div>
             </div>
+            <div class="player-stats">
+              <div class="player-points">${player.totalPoints || 0} pts</div>
+              <div class="player-price">${Number(player.price || 0)}M</div>
+            </div>
+          </div>
         `;
-    }).join('');
-
-    // Generate player cards for vice-captain selection (exclude current captain)
-    viceList.innerHTML = sortedPlayers
+      }).join('');
+  
+      viceList.innerHTML = sortedPlayers
         .filter(p => String(p._id) !== String(selectedCaptainId))
         .map(player => {
-            const playerId = String(player._id);
-            const isSelected = String(selectedViceCaptainId) === playerId;
-            
-            return `
-                <div class="player-card ${isSelected ? 'selected-vice' : ''}" 
-                     onclick="selectViceCaptain('${playerId}')">
-                    ${isSelected ? '<div class="selection-badge vice-badge-large">VC</div>' : ''}
-                    <div class="player-info">
-                        <div class="player-name">${escapeHtml(player.name)}</div>
-                        <div class="player-details">
-                            ${escapeHtml(player.club?.shortName || player.club?.name || 'No Club')} • ${player.position}
-                            <span class="starting-badge">Starting XI</span>
-                        </div>
-                    </div>
-                    <div class="player-stats">
-                        <div class="player-points">${player.totalPoints || 0} pts</div>
-                        <div class="player-price">${Number(player.price || 0)}M</div>
-                    </div>
+          const playerId = String(player._id);
+          const isSelected = String(selectedViceCaptainId) === playerId;
+          return `
+            <div class="player-card ${isSelected ? 'selected-vice' : ''}" onclick="selectViceCaptain('${playerId}')">
+              ${isSelected ? '<div class="selection-badge vice-badge-large">VC</div>' : ''}
+              <div class="player-info">
+                <div class="player-name">${escapeHtml(player.name)}</div>
+                <div class="player-details">
+                  ${escapeHtml(player.club?.shortName || player.club?.name || 'No Club')} • ${player.position}
+                  <span class="starting-badge">Starting XI</span>
                 </div>
-            `;
+              </div>
+              <div class="player-stats">
+                <div class="player-points">${player.totalPoints || 0} pts</div>
+                <div class="player-price">${Number(player.price || 0)}M</div>
+              </div>
+            </div>
+          `;
         }).join('');
-}
-
-// Also update the selectCaptain function to ensure proper string comparison
-function selectCaptain(playerId) {
-    selectedCaptainId = String(playerId);
-    
-    // If vice-captain is same as new captain, clear vice
-    if (String(selectedViceCaptainId) === String(playerId)) {
+    }
+  
+    function selectCaptain(playerId) {
+      selectedCaptainId = String(playerId);
+      if (String(selectedViceCaptainId) === String(playerId)) {
         selectedViceCaptainId = null;
+      }
+      const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
+      populateCaptainModal(startingPlayers);
     }
-    
-    // Refresh the modal display
-    const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
-    populateCaptainModal(startingPlayers);
-}
-
-// Update selectViceCaptain function too
-function selectViceCaptain(playerId) {
-    // Can't select same player as captain
-    if (String(playerId) === String(selectedCaptainId)) {
-        return;
+  
+    function selectViceCaptain(playerId) {
+      if (String(playerId) === String(selectedCaptainId)) return;
+      selectedViceCaptainId = String(playerId);
+      const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
+      populateCaptainModal(startingPlayers);
     }
-    selectedViceCaptainId = String(playerId);
-    
-    // Refresh the modal display
-    const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
-    populateCaptainModal(startingPlayers);
-}
-
-// Also fix the saveCaptainsFromModal validation
-async function saveCaptainsFromModal() {
-    const validation = document.getElementById('captainValidation');
-    
-    if (!selectedCaptainId || !selectedViceCaptainId) {
+  
+    async function saveCaptainsFromModal() {
+      const validation = document.getElementById('captainValidation');
+  
+      if (!selectedCaptainId || !selectedViceCaptainId) {
         validation.style.display = 'block';
         validation.textContent = 'Please select both a Captain and Vice-Captain.';
         return;
-    }
-
-    if (String(selectedCaptainId) === String(selectedViceCaptainId)) {
+      }
+      if (String(selectedCaptainId) === String(selectedViceCaptainId)) {
         validation.style.display = 'block';
         validation.textContent = 'Captain and Vice-Captain must be different players.';
         return;
-    }
-
-    // Verify both players are in starting XI
-    const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
-    const captainInStarting = startingPlayers.find(p => String(p._id) === String(selectedCaptainId));
-    const viceInStarting = startingPlayers.find(p => String(p._id) === String(selectedViceCaptainId));
-
-    if (!captainInStarting || !viceInStarting) {
+      }
+  
+      // Verify both are in starting XI
+      const startingPlayers = selectedPlayers.filter(p => p.slotPosition === 'START');
+      const captainInStarting = startingPlayers.find(p => String(p._id) === String(selectedCaptainId));
+      const viceInStarting = startingPlayers.find(p => String(p._id) === String(selectedViceCaptainId));
+      if (!captainInStarting || !viceInStarting) {
         validation.style.display = 'block';
         validation.textContent = 'Captain and Vice-Captain must be in your starting XI.';
         return;
-    }
-
-    try {
+      }
+  
+      // Ensure the squad is saved before saving captains
+      const ok = await window.ensureTeamSaved();
+      if (!ok) return;
+  
+      try {
         const token = localStorage.getItem('token');
         const response = await fetch('/api/teams/captains', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                captainId: selectedCaptainId,
-                viceCaptainId: selectedViceCaptainId
-            })
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            captainId: selectedCaptainId,
+            viceCaptainId: selectedViceCaptainId
+          })
         });
-
-        if (response.ok) {
-            // Update global variables
-            captainId = selectedCaptainId;
-            viceCaptainId = selectedViceCaptainId;
-            
-            // Update display
-            updateTeamDisplay();
-            await loadActiveGWPoints(); // Refresh live points
-            
-            // Close modal and show success
-            closeCaptainModal();
-            alert('Captains saved successfully!');
-        } else {
-            const error = await response.json();
-            validation.style.display = 'block';
-            validation.textContent = error.error || 'Failed to save captains';
+  
+        const result = await response.json();
+        if (!response.ok) {
+          validation.style.display = 'block';
+          validation.textContent = result.error || 'Failed to save captains';
+          return;
         }
-    } catch (error) {
-        console.error('Error saving captains:', error);
+  
+        // Update globals and UI
+        captainId = selectedCaptainId;
+        viceCaptainId = selectedViceCaptainId;
+        updateTeamDisplay();
+        await loadActiveGWPoints();
+  
+        closeCaptainModal();
+        alert('Captains saved successfully!');
+      } catch (err) {
+        console.error('Error saving captains:', err);
         validation.style.display = 'block';
-        validation.textContent = 'Error saving captains: ' + error.message;
+        validation.textContent = 'Error saving captains: ' + err.message;
+      }
     }
-}
-
-        function closeCaptainModal() {
-            document.getElementById('captainModal').classList.remove('active');
-            document.getElementById('captainValidation').style.display = 'none';
-            
-            // Reset selections to current values
-            selectedCaptainId = captainId;
-            selectedViceCaptainId = viceCaptainId;
-        }
-
-        // Close modal when clicking outside
-        document.addEventListener('click', function(e) {
-            const modal = document.getElementById('captainModal');
-            if (e.target === modal) {
-                closeCaptainModal();
-            }
-        });
+  
+    function closeCaptainModal() {
+      document.getElementById('captainModal').classList.remove('active');
+      document.getElementById('captainValidation').style.display = 'none';
+      // Reset selections to current values
+      selectedCaptainId = captainId;
+      selectedViceCaptainId = viceCaptainId;
+    }
+  
+    // Close modal on background click
+    document.addEventListener('click', function(e) {
+      const modal = document.getElementById('captainModal');
+      if (e.target === modal) {
+        closeCaptainModal();
+      }
+    });
   </script>
+  
 </body>
 </html>
