@@ -1,4 +1,3 @@
-// routes/teams.js
 const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
 const User = require('../models/User');
@@ -51,28 +50,36 @@ router.get('/status', authMiddleware, async (req, res) => {
 // Get my team (sorted: XI then bench if stored)
 router.get('/my-team', authMiddleware, async (req, res) => {
   const user = await User.findById(req.user._id)
-    .populate({ path: 'team.player', populate: { path: 'club', select: 'name shortName logo' } });
+    .populate({ path: 'team.player', populate: { path: 'club', select: 'name shortName logo' } })
+    .populate('startingXI benchOrder');
 
-  // Sorted team if lineup available
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  // Create a sorted view based on saved lineup (if any)
+  const team = Array.isArray(user.team) ? user.team : [];
+
   let sortedTeam = [];
-  if (user.startingXI && user.startingXI.length > 0) {
-    for (const playerId of user.startingXI) {
-      const slot = user.team.find(s => String(s.player._id) === String(playerId));
+  const xiIds = (user.startingXI || []).map(p => String(p._id || p));
+  const benchIds = (user.benchOrder || []).map(p => String(p._id || p));
+
+  if (xiIds.length) {
+    for (const pid of xiIds) {
+      const slot = team.find(s => String(s.player?._id) === pid);
       if (slot) sortedTeam.push(slot);
     }
   }
-  if (user.benchOrder && user.benchOrder.length > 0) {
-    for (const playerId of user.benchOrder) {
-      const slot = user.team.find(s => String(s.player._id) === String(playerId));
+  if (benchIds.length) {
+    for (const pid of benchIds) {
+      const slot = team.find(s => String(s.player?._id) === pid);
       if (slot && !sortedTeam.includes(slot)) sortedTeam.push(slot);
     }
   }
-  for (const slot of user.team) {
+  for (const slot of team) {
     if (!sortedTeam.includes(slot)) sortedTeam.push(slot);
   }
 
   res.json({
-    team: sortedTeam.length > 0 ? sortedTeam : user.team,
+    team: sortedTeam.length > 0 ? sortedTeam : team,
     startingXI: user.startingXI || [],
     benchOrder: user.benchOrder || [],
     budget: user.budget,
@@ -279,6 +286,7 @@ router.post('/transfer', authMiddleware, async (req, res) => {
     }
 
     user.transfersMadeThisGW = (user.transfersMadeThisGW || 0) + 1;
+    user.transferHistory = user.transferHistory || [];
     user.transferHistory.push({
       in: inP._id,
       out: outP._id,
@@ -366,7 +374,7 @@ router.get('/gw-points', authMiddleware, async (req, res) => {
       bench = def.bench;
     }
 
-    // Autosubs: GK if 0 min -> bench[0] if GK and played; outfields 0-min -> first bench outfielder who played
+    // Autosubs
     const minutesOf = (pid) => perMinutes.get(String(pid)) || 0;
     // GK swap
     const gkIdx = await (async () => {
@@ -399,7 +407,7 @@ router.get('/gw-points', authMiddleware, async (req, res) => {
       }
     }
 
-    // Compute total; C/VC logic: if C played (>0 min) and is in final XI, double C; else use VC
+    // Compute total; C/VC logic
     const teamCap = user.team.find(t => t.captain)?.player?._id || user.team.find(t => t.captain)?.player;
     const teamVc = user.team.find(t => t.viceCaptain)?.player?._id || user.team.find(t => t.viceCaptain)?.player;
     const xiSet = new Set(xi.map(String));
