@@ -15,7 +15,7 @@ let transferMode = false;
 let transferOutPlayer = null;
 let userWeeklyPoints = []; // [{ gameweek, points }]
 let userCareerTotal = 0;   // season total from server
-
+let gwLocked = false;
 // Club limits
 const STARTER_CLUB_LIMIT = 5;   // max starters per club
 const BENCH_CLUB_LIMIT = 2;     // max bench per club
@@ -325,7 +325,23 @@ function place(playerDoc, slotPosition, slotIndex) {
     selectedPlayers.push({ ...full, _id: id, slotPosition, slotIndex });
   }
 }
+function updateTransferWarning() {
+  const el = document.getElementById('transferWarning');
+  const ftEl = document.getElementById('freeTransfers');
+  if (ftEl) ftEl.classList.toggle('text-danger', Number(freeTransfers) <= 0);
 
+  if (!el) return;
+  if (Number(freeTransfers) > 0) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  const msg = gwLocked
+    ? 'No free transfers left. Each extra transfer costs -4 points (applied to this Gameweek).'
+    : 'No free transfers left. Each extra transfer costs -4 points (carried to next Gameweek).';
+  el.style.display = 'block';
+  el.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i> ${msg}`;
+}
 async function loadActiveGWPoints() {
   try {
     const token = localStorage.getItem('token');
@@ -344,6 +360,7 @@ async function loadActiveGWPoints() {
     gwWeekNumber = data.weekNumber;
     gwPointsMap = data.perPlayer || {};
     gwTeamTotal = Number(data.teamTotal || 0);
+    gwLocked = !!data.locked; // ADD THIS
 
     // Update GW points + status
     setText('activeGwPoints', gwWeekNumber ? `GW ${gwWeekNumber}: ${gwTeamTotal}` : 'GW —');
@@ -495,6 +512,16 @@ async function selectPlayer(playerId) {
 
   // Transfer flow: team created + transfer mode + replacing a specific slot
   if (teamCreated && transferMode && transferOutPlayer) {
+    if (Number(freeTransfers) <= 0) {
+      const msg = gwLocked
+        ? 'You have 0 free transfers. This transfer will cost -4 points in THIS Gameweek.\nContinue?'
+        : 'You have 0 free transfers. This transfer will cost -4 points NEXT Gameweek.\nContinue?';
+      const ok = confirm(msg);
+      if (!ok) return;
+    }
+
+    // After a successful transfer
+
     // Check per-club limits BEFORE calling the API
     const reason = exceedsClubLimitFor(player, transferOutPlayer.slotPosition, transferOutPlayer);
     if (reason) { alert(reason); return; }
@@ -517,6 +544,12 @@ async function selectPlayer(playerId) {
       setText('budgetRemaining', `${Number(data.budget ?? 0).toFixed(1)}M`);
       freeTransfers = Number(data.freeTransfers ?? freeTransfers);
       setText('freeTransfers', freeTransfers.toString());
+      if (data.penaltyAppliedTo === 'current') {
+        alert('Transfer hit applied: -4 this Gameweek.');
+      } else if (data.penaltyAppliedTo === 'next') {
+        alert('Transfer hit queued: -4 will be applied at the start of next Gameweek.');
+      }
+      updateTransferWarning();
 
       transferOutPlayer = null;
       closePlayerModal();
@@ -738,6 +771,8 @@ function updateUI() {
   setText('budgetPercent', `${usedPercent.toFixed(0)}%`);
   const fill = document.getElementById('valueFill');
   if (fill) fill.style.width = `${usedPercent}%`;
+  // At end of updateUI():
+updateTransferWarning();
 }
 function renderGwChips() {
   const el = document.getElementById('gwChips');

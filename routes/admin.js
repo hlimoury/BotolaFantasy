@@ -91,8 +91,12 @@ router.delete('/gameweeks/:id', async (req, res) => {
 });
 router.put('/gameweeks/:id/activate', async (req, res) => {
   try {
+    // Deactivate all, activate this one
     await Gameweek.updateMany({}, { isActive: false });
     const gw = await Gameweek.findByIdAndUpdate(req.params.id, { isActive: true }, { new: true });
+    if (!gw) return res.status(404).json({ error: 'Gameweek not found' });
+
+    // Increment free transfers (cap at 2) and reset transfer counter
     await User.updateMany({}, [
       {
         $set: {
@@ -101,10 +105,32 @@ router.put('/gameweeks/:id/activate', async (req, res) => {
         }
       }
     ]);
-    res.json(gw);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
 
+    // APPLY PENDING TRANSFER PENALTIES TO THE NEW GW
+    const usersWithPending = await User.find({ pendingTransferPenalty: { $gt: 0 } });
+    for (const u of usersWithPending) {
+      const pen = Number(u.pendingTransferPenalty || 0);
+      if (pen > 0) {
+        const idx = (u.weeklyPoints || []).findIndex(w => w.gameweek === gw.weekNumber);
+        if (idx >= 0) {
+          u.weeklyPoints[idx].points = (u.weeklyPoints[idx].points || 0) - pen;
+          u.weeklyPoints[idx].transferCost = (u.weeklyPoints[idx].transferCost || 0) + pen;
+        } else {
+          u.weeklyPoints.push({ gameweek: gw.weekNumber, points: -pen, transferCost: pen });
+        }
+        // Recompute season total
+        u.totalPoints = u.weeklyPoints.reduce((sum, w) => sum + (w.points || 0), 0);
+        // CLEAR carry-over
+        u.pendingTransferPenalty = 0;
+        await u.save();
+      }
+    }
+
+    res.json(gw);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 // Manually finalize a gameweek now (compute and lock points)
 router.put('/gameweeks/:id/finalize', async (req, res) => {
   try {

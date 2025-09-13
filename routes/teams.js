@@ -272,46 +272,68 @@ router.post('/transfer', authMiddleware, async (req, res) => {
 
     user.budget = BUDGET_CAP - newCost;
 
-    // Transfer costs
-    let cost = 0;
-    if ((user.freeTransfers ?? 1) > 0) {
-      user.freeTransfers = (user.freeTransfers ?? 1) - 1;
-    } else {
-      cost = EXTRA_TRANSFER_COST;
-      if (gw) {
-        const wIdx = user.weeklyPoints.findIndex(w => w.gameweek === gw.weekNumber);
-        if (wIdx >= 0) {
-          user.weeklyPoints[wIdx].points -= cost;
-          user.weeklyPoints[wIdx].transferCost = (user.weeklyPoints[wIdx].transferCost || 0) + cost;
-        } else {
-          user.weeklyPoints.push({ gameweek: gw.weekNumber, points: -cost, transferCost: cost });
-        }
-        user.totalPoints = user.weeklyPoints.reduce((a, w) => a + (w.points || 0), 0);
+// Transfer costs (NEW: apply -4 now if after deadline, else carry to next GW)
+let cost = 0;
+
+if ((user.freeTransfers ?? 1) > 0) {
+  // Consume one free transfer
+  user.freeTransfers = (user.freeTransfers ?? 1) - 1;
+  res.locals._penaltyAppliedTo = 'none';
+} else {
+  // Extra transfer => costs -4
+  cost = EXTRA_TRANSFER_COST;
+
+  if (gw) {
+    const started = isLocked(gw.deadline || gw.startDate); // true if GW deadline passed
+    if (started) {
+      // Apply penalty to CURRENT gameweek immediately
+      user.weeklyPoints = user.weeklyPoints || [];
+      const wIdx = user.weeklyPoints.findIndex(w => w.gameweek === gw.weekNumber);
+      if (wIdx >= 0) {
+        user.weeklyPoints[wIdx].points -= cost;
+        user.weeklyPoints[wIdx].transferCost = (user.weeklyPoints[wIdx].transferCost || 0) + cost;
+      } else {
+        user.weeklyPoints.push({ gameweek: gw.weekNumber, points: -cost, transferCost: cost });
       }
+      // Update season total now
+      user.totalPoints = user.weeklyPoints.reduce((a, w) => a + (w.points || 0), 0);
+      res.locals._penaltyAppliedTo = 'current';
+    } else {
+      // GW not started yet -> carry penalty to NEXT GW
+      user.pendingTransferPenalty = (user.pendingTransferPenalty || 0) + cost;
+      res.locals._penaltyAppliedTo = 'next';
     }
+  } else {
+    // No active GW -> carry penalty to NEXT GW when it activates
+    user.pendingTransferPenalty = (user.pendingTransferPenalty || 0) + cost;
+    res.locals._penaltyAppliedTo = 'next';
+  }
+}
 
-    user.transfersMadeThisGW = (user.transfersMadeThisGW || 0) + 1;
-    user.transferHistory = user.transferHistory || [];
-    user.transferHistory.push({
-      in: inP._id,
-      out: outP._id,
-      gameweek: gw ? gw.weekNumber : null,
-      cost
-    });
+user.transfersMadeThisGW = (user.transfersMadeThisGW || 0) + 1;
+user.transferHistory = user.transferHistory || [];
+user.transferHistory.push({
+  in: inP._id,
+  out: outP._id,
+  gameweek: gw ? gw.weekNumber : null,
+  cost
+});
 
-    await user.save();
+await user.save();
 
-    // Return updated
-    const updated = await User.findById(user._id)
-      .populate({ path: 'team.player', populate: { path: 'club', select: 'name shortName logo' } });
+// Return updated
+const updated = await User.findById(user._id)
+  .populate({ path: 'team.player', populate: { path: 'club', select: 'name shortName logo' } });
 
-    res.json({
-      message: `Transfer completed${cost ? ` (-${cost} pts)` : ''}`,
-      team: updated.team,
-      budget: updated.budget,
-      freeTransfers: updated.freeTransfers,
-      transfersMadeThisGW: updated.transfersMadeThisGW
-    });
+res.json({
+  message: `Transfer completed${cost ? ` (-${cost} pts)` : ''}`,
+  team: updated.team,
+  budget: updated.budget,
+  freeTransfers: updated.freeTransfers,
+  transfersMadeThisGW: updated.transfersMadeThisGW,
+  penaltyAppliedTo: res.locals._penaltyAppliedTo || 'none' // 'current' | 'next' | 'none'
+});
+
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
