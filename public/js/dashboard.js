@@ -399,35 +399,53 @@ function openPlayerModal(positionFilter) {
   const modalPosition = document.getElementById('modalPosition');
   modalPosition.textContent = positionFilter ? positionFilter : (currentPosition === 'BENCH' && currentSlotIndex > 0 ? 'Outfield' : 'Any');
 
-  // Base list based on slot constraints
+  // Build base list from current slot constraints
   let list = allPlayers.slice();
   if (positionFilter) {
     list = list.filter(p => p.position === positionFilter);
   } else if (currentPosition === 'BENCH' && currentSlotIndex > 0) {
     list = list.filter(p => p.position !== 'GK');
   }
-  // If transferring, restrict to same position as transferOutPlayer
   if (transferMode && transferOutPlayer) {
     list = list.filter(p => p.position === transferOutPlayer.position);
   }
 
-  // Exclude already selected players (except transfer out player)
+  // Exclude already selected players (except the one being transferred out)
   const selectedIds = new Set(selectedPlayers.map(p => String(p._id)));
   if (transferOutPlayer) selectedIds.delete(String(transferOutPlayer._id));
   list = list.filter(p => !selectedIds.has(String(p._id)));
 
-  setClubFilterOptions(list);
-  displayPlayersInModal(list);
+  // Cache base list for live filtering (search/club/sort)
+  modalBaseList = list;
+
+  // Populate club dropdown from the base list and render
+  setClubFilterOptions(modalBaseList);
+  displayPlayersInModal(modalBaseList);
+
   modal.classList.add('active');
 }
+
 
 function setClubFilterOptions(players) {
   const clubFilter = document.getElementById('clubFilter');
   if (!clubFilter) return;
-  const clubIds = Array.from(new Set(players.map(p => p.club?._id).filter(Boolean)));
+
+  const prev = clubFilter.value; // keep current selection if still valid
+
+  const clubIds = Array.from(new Set(
+    players
+      .map(p => p.club && p.club._id && String(p.club._id))
+      .filter(Boolean)
+  ));
+
   const clubs = allClubs.filter(c => clubIds.includes(String(c._id)));
-  clubFilter.innerHTML = '<option value="">All Clubs</option>' + clubs.map(c => `<option value="${c._id}">${escapeHtml(c.name)}</option>`).join('');
+
+  clubFilter.innerHTML = '<option value="">All Clubs</option>' +
+    clubs.map(c => `<option value="${String(c._id)}">${escapeHtml(c.name)}</option>`).join('');
+
+  if (prev && clubIds.includes(prev)) clubFilter.value = prev;
 }
+
 
 function displayPlayersInModal(players) {
   const playersList = document.getElementById('playersList');
@@ -436,8 +454,13 @@ function displayPlayersInModal(players) {
   const sortBy = document.getElementById('sortBy').value;
 
   let filtered = players.slice();
-  if (searchTerm) filtered = filtered.filter(p => p.name.toLowerCase().includes(searchTerm));
-  if (clubId) filtered = filtered.filter(p => p.club?._id === clubId);
+
+  if (clubId) {
+    filtered = filtered.filter(p => String(p.club?._id) === String(clubId));
+  }
+  if (searchTerm) {
+    filtered = filtered.filter(p => (p.name || '').toLowerCase().includes(searchTerm));
+  }
 
   if (sortBy === 'price') filtered.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
   else if (sortBy === 'points') filtered.sort((a, b) => Number(b.totalPoints || 0) - Number(a.totalPoints || 0));
@@ -457,12 +480,14 @@ function displayPlayersInModal(players) {
   `).join('');
 }
 
+
 function filterPlayersInModal() {
   const modal = document.getElementById('playerModal');
   if (!modal.classList.contains('active')) return;
-  // Recompute list with current constraints
-  openPlayerModal(null);
+  // Just re-render from cached base list; do NOT rebuild dropdown or base list
+  displayPlayersInModal(modalBaseList);
 }
+
 
 async function selectPlayer(playerId) {
   const player = allPlayers.find(p => String(p._id) === String(playerId));
