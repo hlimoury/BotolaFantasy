@@ -48,6 +48,7 @@ router.get('/status', authMiddleware, async (req, res) => {
 });
 
 // Get my team (sorted: XI then bench if stored)
+// Get my team (sorted: XI then bench if stored)
 router.get('/my-team', authMiddleware, async (req, res) => {
   const user = await User.findById(req.user._id)
     .populate({ path: 'team.player', populate: { path: 'club', select: 'name shortName logo' } })
@@ -78,12 +79,16 @@ router.get('/my-team', authMiddleware, async (req, res) => {
     if (!sortedTeam.includes(slot)) sortedTeam.push(slot);
   }
 
+  // Sort weeklyPoints ascending by gameweek for UI
+  const weeklyPointsSorted = (user.weeklyPoints || []).slice().sort((a, b) => a.gameweek - b.gameweek);
+
   res.json({
     team: sortedTeam.length > 0 ? sortedTeam : team,
     startingXI: user.startingXI || [],
     benchOrder: user.benchOrder || [],
     budget: user.budget,
-    totalPoints: user.totalPoints,
+    totalPoints: user.totalPoints,          // Career/season total
+    weeklyPoints: weeklyPointsSorted,       // ADD THIS
     freeTransfers: user.freeTransfers ?? 1,
     transfersMadeThisGW: user.transfersMadeThisGW ?? 0
   });

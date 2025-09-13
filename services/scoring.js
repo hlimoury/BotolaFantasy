@@ -49,7 +49,7 @@ function computePoints(position, s) {
   if (s.ownGoals) pts += cfg.ownGoal * s.ownGoals;
   
   // NEW: Man of the Match bonus
-  if (s.isManOfTheMatch) pts += cfg.manOfTheMatch;
+  if (s.isManOfTheMatch) pts += (cfg.motm || 3);
   
   return pts;
 }

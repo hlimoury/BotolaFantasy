@@ -322,7 +322,8 @@ router.post('/matches/:id/results', async (req, res) => {
         saves: Number(row.saves) || 0,
         penaltiesSaved: Number(row.penaltiesSaved) || 0,
         penaltiesMissed: Number(row.penaltiesMissed) || 0,
-        ownGoals: Number(row.ownGoals) || 0
+        ownGoals: Number(row.ownGoals) || 0,
+        isManOfTheMatch: !!row.isManOfTheMatch
       };
       
       const points = computePoints(dbPlayer.position, s);

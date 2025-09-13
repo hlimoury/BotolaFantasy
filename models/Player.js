@@ -1,12 +1,12 @@
-// Player.js
+// models/Player.js
 const mongoose = require('mongoose');
 
 const playerSchema = new mongoose.Schema({
-  apiId: { type: Number, index: true, unique: true },
+  apiId: { type: Number, index: true, unique: true, sparse: true }, // sparse allows manual players without apiId
   name: { type: String, required: true },
   position: { type: String, enum: ['GK', 'DEF', 'MID', 'FWD'], required: true },
   club: { type: mongoose.Schema.Types.ObjectId, ref: 'Club', required: true },
-  apiTeamId: { type: Number, index: true },
+  apiTeamId: { type: Number, index: true, sparse: true },
   price: { type: Number, default: 6 },
   image: { type: String },
   stats: {
@@ -20,7 +20,13 @@ const playerSchema = new mongoose.Schema({
   },
   totalPoints: { type: Number, default: 0 },
   weeklyPoints: [{ gameweek: Number, points: Number }],
-  isActive: { type: Boolean, default: true }
-});
+  isActive: { type: Boolean, default: true },
+
+  // NEW: availability flags
+  isInjured: { type: Boolean, default: false },
+  isSuspended: { type: Boolean, default: false },
+  statusNote: { type: String, default: '' } // optional note, e.g., return date
+
+}, { timestamps: true });
 
 module.exports = mongoose.model('Player', playerSchema);

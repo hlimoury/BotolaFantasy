@@ -104,17 +104,17 @@ async function recalculateAll() {
   appendLog(data.message);
 }
 // Players
+// public/js/admin.js
 async function loadPlayers() {
   const res = await fetch('/api/admin/players', {
     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
   });
   ADMIN_PLAYERS = await res.json();
-
   const tbody = document.getElementById('playersTable');
   if (!tbody) return;
 
   if (!Array.isArray(ADMIN_PLAYERS) || ADMIN_PLAYERS.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No players yet</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">No players yet</td></tr>`;
     return;
   }
 
@@ -132,6 +132,18 @@ async function loadPlayers() {
         <div class="form-check form-switch">
           <input class="form-check-input" type="checkbox" ${p.isActive ? 'checked' : ''}
                  onchange="updatePlayer('${p._id}', {isActive: this.checked})">
+        </div>
+      </td>
+      <td>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" ${p.isInjured ? 'checked' : ''}
+                 onchange="updatePlayer('${p._id}', {isInjured: this.checked})">
+        </div>
+      </td>
+      <td>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" ${p.isSuspended ? 'checked' : ''}
+                 onchange="updatePlayer('${p._id}', {isSuspended: this.checked})">
         </div>
       </td>
       <td class="d-flex gap-2">
@@ -724,8 +736,7 @@ function addPerfRow(data = {}) {
   const tbody = document.getElementById('perfTbody');
   const tr = document.createElement('tr');
   tr.dataset.playerId = data.playerId || '';
-  
-  // Ensure all numeric values are properly set
+
   const minutesPlayed = Number(data.minutesPlayed) || 0;
   const goals = Number(data.goals) || 0;
   const assists = Number(data.assists) || 0;
@@ -734,84 +745,41 @@ function addPerfRow(data = {}) {
   const penaltiesSaved = Number(data.penaltiesSaved) || 0;
   const penaltiesMissed = Number(data.penaltiesMissed) || 0;
   const ownGoals = Number(data.ownGoals) || 0;
-  
+
   tr.innerHTML = `
     <td style="min-width:200px;">
       <select class="form-select form-select-sm perf-player-select" onchange="onPerfPlayerChange(this)" style="min-width: 180px;">
         <option value="">-- Select Player --</option>
         ${buildPerfPlayerOptions()}
       </select>
-      <small class="text-muted d-block mt-1" id="player-info-${tr.dataset.playerId || Math.random()}"></small>
+      <small class="text-muted d-block mt-1" id="player-info-${Math.random().toString(36).slice(2)}"></small>
     </td>
-    <td style="min-width:80px;">
-      <input type="number" class="form-control form-control-sm perf-min" value="${minutesPlayed}" min="0" max="120" style="width: 70px;">
-      <small class="text-muted">mins</small>
+    <td><input type="number" class="form-control form-control-sm perf-min" value="${minutesPlayed}" min="0" max="120"></td>
+    <td><input type="number" class="form-control form-control-sm perf-goals" value="${goals}" min="0" max="10"></td>
+    <td><input type="number" class="form-control form-control-sm perf-assists" value="${assists}" min="0" max="10"></td>
+    <td><input type="number" class="form-control form-control-sm perf-conceded" value="${conceded}" min="0" max="10"></td>
+    <td class="text-center"><input type="checkbox" class="form-check-input perf-cs" ${data.cleanSheet ? 'checked' : ''}></td>
+    <td class="text-center"><input type="checkbox" class="form-check-input perf-yc" ${data.yellowCard ? 'checked' : ''}></td>
+    <td class="text-center"><input type="checkbox" class="form-check-input perf-rc" ${data.redCard ? 'checked' : ''}></td>
+    <td><input type="number" class="form-control form-control-sm perf-saves" value="${saves}" min="0" max="20"></td>
+    <td><input type="number" class="form-control form-control-sm perf-ps" value="${penaltiesSaved}" min="0" max="5"></td>
+    <td><input type="number" class="form-control form-control-sm perf-pm" value="${penaltiesMissed}" min="0" max="5"></td>
+    <td><input type="number" class="form-control form-control-sm perf-og" value="${ownGoals}" min="0" max="5"></td>
+    <td class="text-center">
+      <input type="checkbox" class="form-check-input perf-motm" ${data.isManOfTheMatch ? 'checked' : ''} onchange="handleMotmChange(this)">
     </td>
-    <td style="min-width:70px;">
-      <input type="number" class="form-control form-control-sm perf-goals" value="${goals}" min="0" max="10" style="width: 60px;">
-    </td>
-    <td style="min-width:80px;">
-      <input type="number" class="form-control form-control-sm perf-assists" value="${assists}" min="0" max="10" style="width: 70px;">
-    </td>
-    <td style="min-width:90px;">
-      <input type="number" class="form-control form-control-sm perf-conceded" value="${conceded}" min="0" max="10" style="width: 80px;">
-      <small class="text-muted">goals</small>
-    </td>
-    <td style="min-width:100px;" class="text-center">
-      <div class="form-check d-flex justify-content-center">
-        <input type="checkbox" class="form-check-input perf-cs" ${data.cleanSheet ? 'checked' : ''}>
-        <label class="form-check-label ms-2">CS</label>
-      </div>
-    </td>
-    <td style="min-width:100px;" class="text-center">
-      <div class="form-check d-flex justify-content-center">
-        <input type="checkbox" class="form-check-input perf-yc" ${data.yellowCard ? 'checked' : ''}>
-        <label class="form-check-label ms-2">YC</label>
-      </div>
-    </td>
-    <td style="min-width:90px;" class="text-center">
-      <div class="form-check d-flex justify-content-center">
-        <input type="checkbox" class="form-check-input perf-rc" ${data.redCard ? 'checked' : ''}>
-        <label class="form-check-label ms-2">RC</label>
-      </div>
-    </td>
-    <td style="min-width:70px;">
-      <input type="number" class="form-control form-control-sm perf-saves" value="${saves}" min="0" max="20" style="width: 60px;">
-    </td>
-    <td style="min-width:110px;">
-      <input type="number" class="form-control form-control-sm perf-ps" value="${penaltiesSaved}" min="0" max="5" style="width: 60px;">
-      <small class="text-muted d-block">saved</small>
-    </td>
-    <td style="min-width:120px;">
-      <input type="number" class="form-control form-control-sm perf-pm" value="${penaltiesMissed}" min="0" max="5" style="width: 60px;">
-      <small class="text-muted d-block">missed</small>
-    </td>
-    <td style="min-width:100px;">
-      <input type="number" class="form-control form-control-sm perf-og" value="${ownGoals}" min="0" max="5" style="width: 60px;">
-      <small class="text-muted">own</small>
-    </td>
-    <td style="min-width:80px;">
-      <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()" title="Remove Player">
-        <i class="bi bi-trash"></i>
-      </button>
+    <td>
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()"><i class="bi bi-trash"></i></button>
     </td>
   `;
-  
   tbody.appendChild(tr);
-  
-  // Set the player selection if provided
+
   if (data.playerId) {
     const sel = tr.querySelector('.perf-player-select');
-    if (sel) {
-      sel.value = data.playerId;
-      if (!sel.value) {
-        console.warn('Player ID not found in dropdown:', data.playerId);
-      }
-      // Show player info
-      updatePlayerInfo(sel);
-    }
+    if (sel) sel.value = data.playerId;
   }
 }
+
 
 function updatePlayerInfo(selectElement) {
   const playerId = selectElement.value;
@@ -901,20 +869,24 @@ async function submitPerfForm(e) {
       break;
     }
     
-    perfArr.push({
-      player: playerId,
-      minutesPlayed: minutesPlayed,
-      goals: goals,
-      assists: assists,
-      conceded: conceded,
-      cleanSheet: !!r.querySelector('.perf-cs')?.checked,
-      yellowCard: !!r.querySelector('.perf-yc')?.checked,
-      redCard: !!r.querySelector('.perf-rc')?.checked,
-      saves: saves,
-      penaltiesSaved: penaltiesSaved,
-      penaltiesMissed: penaltiesMissed,
-      ownGoals: ownGoals
-    });
+   // inside loop building perfArr in submitPerfForm:
+perfArr.push({
+  player: playerId,
+  minutesPlayed,
+  goals,
+  assists,
+  conceded,
+  cleanSheet: !!r.querySelector('.perf-cs')?.checked,
+  yellowCard: !!r.querySelector('.perf-yc')?.checked,
+  redCard: !!r.querySelector('.perf-rc')?.checked,
+  saves,
+  penaltiesSaved,
+  penaltiesMissed,
+  ownGoals,
+  // NEW:
+  isManOfTheMatch: !!r.querySelector('.perf-motm')?.checked
+});
+
   }
   
   if (hasError) return;

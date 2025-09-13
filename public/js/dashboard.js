@@ -13,6 +13,12 @@ let freeTransfers = 1;
 let teamCreated = false;
 let transferMode = false;
 let transferOutPlayer = null;
+let userWeeklyPoints = []; // [{ gameweek, points }]
+let userCareerTotal = 0;   // season total from server
+
+// Club limits
+const STARTER_CLUB_LIMIT = 5;   // max starters per club
+const BENCH_CLUB_LIMIT = 2;     // max bench per club
 
 // Active GW live points
 let gwWeekNumber = null;
@@ -40,6 +46,75 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateUI();
 });
 
+function getClubId(p) {
+  // Works for populated docs {club: {_id, ...}} or raw ids
+  if (!p || !p.club) return null;
+  return String(p.club._id || p.club);
+}
+function getClubName(p) {
+  return p?.club?.shortName || p?.club?.name || 'club';
+}
+
+// Build per-club counts for current selection
+function computeClubCounts(list = selectedPlayers) {
+  const starters = new Map();
+  const bench = new Map();
+  for (const sp of list) {
+    const cid = getClubId(sp);
+    if (!cid) continue;
+    if (sp.slotPosition === 'START') {
+      starters.set(cid, (starters.get(cid) || 0) + 1);
+    } else if (sp.slotPosition === 'BENCH') {
+      bench.set(cid, (bench.get(cid) || 0) + 1);
+    }
+  }
+  return { starters, bench };
+}
+
+// Check if adding/replacing would exceed per-club limits.
+// replacingAtSlot is the existing player in that slot (if any) so we
+// subtract their count before simulating the new one.
+function exceedsClubLimitFor(player, targetPosition, replacingAtSlot = null) {
+  const cid = getClubId(player);
+  if (!cid) return null;
+
+  const counts = computeClubCounts();
+  // If replacing someone in this slot, subtract that player's club from the right map
+  if (replacingAtSlot) {
+    const rcid = getClubId(replacingAtSlot);
+    if (rcid) {
+      if (replacingAtSlot.slotPosition === 'START') {
+        counts.starters.set(rcid, Math.max(0, (counts.starters.get(rcid) || 0) - 1));
+      } else if (replacingAtSlot.slotPosition === 'BENCH') {
+        counts.bench.set(rcid, Math.max(0, (counts.bench.get(rcid) || 0) - 1));
+      }
+    }
+  }
+
+  if (targetPosition === 'START') {
+    const next = (counts.starters.get(cid) || 0) + 1;
+    if (next > STARTER_CLUB_LIMIT) {
+      return `Max ${STARTER_CLUB_LIMIT} starters per club. ${getClubName(player)} would be ${next}/${STARTER_CLUB_LIMIT}.`;
+    }
+  } else if (targetPosition === 'BENCH') {
+    const next = (counts.bench.get(cid) || 0) + 1;
+    if (next > BENCH_CLUB_LIMIT) {
+      return `Max ${BENCH_CLUB_LIMIT} bench players per club. ${getClubName(player)} would be ${next}/${BENCH_CLUB_LIMIT}.`;
+    }
+  }
+  return null;
+}
+
+// Validate the whole lineup against limits (used before saving)
+function validateClubLimits() {
+  const { starters, bench } = computeClubCounts();
+  const startersExceeded = [];
+  const benchExceeded = [];
+  for (const [cid, cnt] of starters.entries()) if (cnt > STARTER_CLUB_LIMIT) startersExceeded.push({ cid, cnt });
+  for (const [cid, cnt] of bench.entries()) if (cnt > BENCH_CLUB_LIMIT) benchExceeded.push({ cid, cnt });
+
+  return { startersExceeded, benchExceeded, ok: (startersExceeded.length === 0 && benchExceeded.length === 0) };
+}
 function setupEventListeners() {
   const searchInput = document.getElementById('searchPlayer');
   const clubFilter = document.getElementById('clubFilter');
@@ -93,7 +168,11 @@ async function loadUserTeam() {
     const budgetBank = Number(data.budget ?? 100);
     setText('freeTransfers', freeTransfers.toString());
     setText('budgetRemaining', `${budgetBank.toFixed(1)}M`);
-
+    userCareerTotal = Number(data.totalPoints || 0);
+userWeeklyPoints = Array.isArray(data.weeklyPoints) ? data.weeklyPoints.slice().sort((a, b) => a.gameweek - b.gameweek) : [];
+await loadActiveGWPoints();  
+setText('careerTotalPoints', userCareerTotal.toString());
+renderGwChips();
     const teamArr = Array.isArray(data.team) ? data.team : [];
     teamCreated = teamArr.length === 15;
 
@@ -267,7 +346,7 @@ async function loadActiveGWPoints() {
     gwTeamTotal = Number(data.teamTotal || 0);
 
     // Update GW points + status
-    setText('totalPoints', gwTeamTotal.toString());
+    setText('activeGwPoints', gwWeekNumber ? `GW ${gwWeekNumber}: ${gwTeamTotal}` : 'GW —');
     const gwStatusEl = document.getElementById('gwStatus');
     if (gwStatusEl) {
       const locked = !!data.locked;
@@ -389,8 +468,12 @@ async function selectPlayer(playerId) {
   const player = allPlayers.find(p => String(p._id) === String(playerId));
   if (!player) return;
 
-  // Transfer flow if team already created
+  // Transfer flow: team created + transfer mode + replacing a specific slot
   if (teamCreated && transferMode && transferOutPlayer) {
+    // Check per-club limits BEFORE calling the API
+    const reason = exceedsClubLimitFor(player, transferOutPlayer.slotPosition, transferOutPlayer);
+    if (reason) { alert(reason); return; }
+
     try {
       const token = localStorage.getItem('token');
       const res = await fetch('/api/teams/transfer', {
@@ -401,12 +484,11 @@ async function selectPlayer(playerId) {
       const data = await res.json();
       if (!res.ok) return alert(data.error || 'Transfer failed');
 
-      // Replace player in same slot locally
+      // Replace in same slot locally
       const idx = selectedPlayers.findIndex(p => p.slotPosition === transferOutPlayer.slotPosition && p.slotIndex === transferOutPlayer.slotIndex);
       if (idx >= 0) {
         selectedPlayers[idx] = { ...player, _id: String(player._id), slotPosition: transferOutPlayer.slotPosition, slotIndex: transferOutPlayer.slotIndex };
       }
-      // Update budget and freeTransfers
       setText('budgetRemaining', `${Number(data.budget ?? 0).toFixed(1)}M`);
       freeTransfers = Number(data.freeTransfers ?? freeTransfers);
       setText('freeTransfers', freeTransfers.toString());
@@ -415,7 +497,7 @@ async function selectPlayer(playerId) {
       closePlayerModal();
       updateTeamDisplay();
       updateUI();
-      await loadActiveGWPoints(); // refresh live GW totals after transfer
+      await loadActiveGWPoints();
       return;
     } catch (e) {
       console.error('Transfer error:', e);
@@ -424,25 +506,20 @@ async function selectPlayer(playerId) {
     }
   }
 
-  // Initial creation: normal add/replace with budget checks
+  // Initial creation or replacement in local layout
   const existingAtSlot = selectedPlayers.find(p => p.slotPosition === currentPosition && p.slotIndex === currentSlotIndex);
-  // Budget check (including removal of existing slot cost)
+
+  // Budget check (consider removal of existing slot)
   const spent = selectedPlayers.reduce((sum, p) => sum + Number(p.price || 0), 0) - (existingAtSlot ? Number(existingAtSlot.price || 0) : 0);
   if (spent + Number(player.price || 0) > totalBudget) {
     alert('Not enough budget!');
     return;
   }
 
-  // Bench constraints
+  // Bench constraints by type
   if (currentPosition === 'BENCH') {
-    if (currentSlotIndex === 0 && player.position !== 'GK') {
-      alert('Bench slot 0 must be a GK');
-      return;
-    }
-    if (currentSlotIndex > 0 && player.position === 'GK') {
-      alert('Bench outfield slots cannot be GK');
-      return;
-    }
+    if (currentSlotIndex === 0 && player.position !== 'GK') return alert('Bench slot 0 must be a GK');
+    if (currentSlotIndex > 0 && player.position === 'GK') return alert('Bench outfield slots cannot be GK');
   }
   // Starter slot strict position
   if (currentPosition === 'START') {
@@ -457,6 +534,10 @@ async function selectPlayer(playerId) {
     alert('Player already in squad');
     return;
   }
+
+  // NEW: per-club limits check for the slot we're filling
+  const reason = exceedsClubLimitFor(player, currentPosition, existingAtSlot);
+  if (reason) { alert(reason); return; }
 
   // Replace in slot
   if (existingAtSlot) {
@@ -478,13 +559,67 @@ function closePlayerModal() {
   currentPosition = null;
   currentSlotIndex = null;
 }
+// Auto-sub on the pitch (visual only) for injured/suspended starters
+function applyAvailabilityAutoSubs(list) {
+  // Deep-ish clone to avoid mutating selectedPlayers
+  const clones = list.map(p => ({ ...p }));
+
+  // Index helpers
+  const getAt = (slotPosition, slotIndex) => clones.find(x => x.slotPosition === slotPosition && x.slotIndex === slotIndex);
+  const swapSlots = (a, b) => {
+    const aPos = a.slotPosition, aIdx = a.slotIndex;
+    a.slotPosition = b.slotPosition; a.slotIndex = b.slotIndex;
+    b.slotPosition = aPos; b.slotIndex = aIdx;
+  };
+
+  // Bench candidates by position (in bench order)
+  const benchByPos = (pos) =>
+    clones
+      .filter(x => x.slotPosition === 'BENCH' && x.position === pos && !x.isInjured && !x.isSuspended)
+      .sort((a, b) => a.slotIndex - b.slotIndex);
+
+  // Start: GK (0), DEF (1-4), MID (5-8), FWD (9-10)
+  const startSlots = [
+    { idx: 0, pos: 'GK' },
+    { idx: 1, pos: 'DEF' }, { idx: 2, pos: 'DEF' }, { idx: 3, pos: 'DEF' }, { idx: 4, pos: 'DEF' },
+    { idx: 5, pos: 'MID' }, { idx: 6, pos: 'MID' }, { idx: 7, pos: 'MID' }, { idx: 8, pos: 'MID' },
+    { idx: 9, pos: 'FWD' }, { idx: 10, pos: 'FWD' }
+  ];
+
+  for (const slot of startSlots) {
+    const starter = getAt('START', slot.idx);
+    if (!starter) continue;
+
+    const unavailable = !!starter.isInjured || !!starter.isSuspended;
+    if (!unavailable) continue;
+
+    const candidates = benchByPos(slot.pos);
+    if (!candidates.length) continue;
+
+    // take earliest bench candidate of the same position
+    const benchPick = candidates[0];
+    swapSlots(starter, benchPick);
+  }
+
+  return clones;
+}
 
 // Display
 function updateTeamDisplay() {
+  const renderPlayers = applyAvailabilityAutoSubs(selectedPlayers);
+
+  // Compute per-club counts for starters to highlight violations
+  const { starters } = computeClubCounts(renderPlayers);
+  const exceededClubIds = new Set();
+  for (const [cid, cnt] of starters.entries()) {
+    if (cnt > STARTER_CLUB_LIMIT) exceededClubIds.add(String(cid));
+  }
+
   document.querySelectorAll('.position-slot').forEach(slot => {
+    slot.classList.remove('limit-exceeded'); // reset visual
     const pos = slot.dataset.position; // 'START' or 'BENCH'
     const idx = parseInt(slot.dataset.index, 10);
-    const player = selectedPlayers.find(p => p.slotPosition === pos && p.slotIndex === idx);
+    const player = renderPlayers.find(p => p.slotPosition === pos && p.slotIndex === idx);
 
     slot.classList.toggle('filled', !!player);
     if (player) {
@@ -492,13 +627,28 @@ function updateTeamDisplay() {
       const gwPts = Number(gwPointsMap[pid] || 0);
       const isC = pid === String(captainId);
       const isVC = pid === String(viceCaptainId);
+      const clubDisplay = player.club?.shortName || player.club?.name || '';
+      const statusBadge = player.isInjured
+        ? '<span class="badge bg-danger position-absolute" style="top:22px;right:4px;">INJ</span>'
+        : (player.isSuspended ? '<span class="badge bg-warning text-dark position-absolute" style="top:22px;right:4px;">SUS</span>' : '');
+      const label = (pos === 'BENCH') ? (idx === 0 ? 'GK' : 'SUB') : player.position;
+
+      // If starters of this player's club exceed limit, mark starter slots of that club
+      if (pos === 'START') {
+        const cid = getClubId(player);
+        if (cid && exceededClubIds.has(String(cid))) {
+          slot.classList.add('limit-exceeded');
+        }
+      }
+
       slot.innerHTML = `
-        <span class="position-label">${pos === 'BENCH' ? (idx === 0 ? 'GK' : 'SUB') : player.position}</span>
+        <span class="position-label">${label}</span>
         ${isC ? '<span class="captain-badge">C</span>' : ''}
         ${isVC ? '<span class="vice-badge">VC</span>' : ''}
+        ${statusBadge}
         <div class="player-info">
           <div class="player-name">${escapeHtml(player.name)}</div>
-          <div class="player-club">${escapeHtml(player.club?.shortName || player.club?.name || '')}</div>
+          <div class="player-club">${escapeHtml(clubDisplay)}</div>
           <div class="player-points">${gwWeekNumber ? `GW${gwWeekNumber}: ${gwPts} pts` : `${gwPts} pts`}</div>
           <div class="player-price">${Number(player.price || 0)}M</div>
         </div>
@@ -520,11 +670,33 @@ function updateTeamDisplay() {
     }
   });
 
-  // Update live team points (Active GW)
-  if (typeof gwTeamTotal === 'number' && !Number.isNaN(gwTeamTotal)) {
-    setText('totalPoints', gwTeamTotal.toString());
+  // Banner warning if any club exceeds starter limit
+  const banner = document.getElementById('clubLimitWarning');
+  if (banner) {
+    if (exceededClubIds.size > 0) {
+      // Build "RCA (6/5), WAC (7/5)" style message
+      const parts = [];
+      for (const cid of exceededClubIds) {
+        // find a sample player for this club to get a name
+        const sample = renderPlayers.find(p => p.slotPosition === 'START' && getClubId(p) === cid);
+        const name = sample ? (sample.club?.shortName || sample.club?.name || 'Club') : 'Club';
+        const cnt = starters.get(cid) || 0;
+        parts.push(`${name} (${cnt}/${STARTER_CLUB_LIMIT})`);
+      }
+      banner.style.display = 'block';
+      banner.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i> Starters per-club limit exceeded: ${parts.join(', ')}`;
+    } else {
+      banner.style.display = 'none';
+      banner.textContent = '';
+    }
+  }
+
+  if (gwWeekNumber != null) {
+    setText('activeGwPoints', `GW ${gwWeekNumber}: ${gwTeamTotal}`);
   }
 }
+
+
 
 function updateUI() {
   const count = selectedPlayers.length;
@@ -541,6 +713,17 @@ function updateUI() {
   setText('budgetPercent', `${usedPercent.toFixed(0)}%`);
   const fill = document.getElementById('valueFill');
   if (fill) fill.style.width = `${usedPercent}%`;
+}
+function renderGwChips() {
+  const el = document.getElementById('gwChips');
+  if (!el) return;
+  if (!userWeeklyPoints.length) {
+    el.innerHTML = '<small class="text-white-50">No GW history yet</small>';
+    return;
+  }
+  el.innerHTML = userWeeklyPoints
+    .map(w => `<span class="badge bg-light text-dark me-1 mb-1">GW ${w.gameweek}: ${Number(w.points || 0)}</span>`)
+    .join('');
 }
 
 function setText(id, text) {
@@ -563,6 +746,26 @@ async function saveTeam() {
   if (!captainId || !viceCaptainId) {
     alert('Please set Captain and Vice-Captain.');
     return;
+  }
+  // Club limits guard
+  {
+    const { startersExceeded, benchExceeded, ok } = validateClubLimits();
+    if (!ok) {
+      const msg = [
+        ...startersExceeded.map(e => {
+          const any = selectedPlayers.find(p => p.slotPosition === 'START' && getClubId(p) === e.cid);
+          const name = any ? (any.club?.shortName || any.club?.name || 'Club') : 'Club';
+          return `${name} starters: ${e.cnt}/${STARTER_CLUB_LIMIT}`;
+        }),
+        ...benchExceeded.map(e => {
+          const any = selectedPlayers.find(p => p.slotPosition === 'BENCH' && getClubId(p) === e.cid);
+          const name = any ? (any.club?.shortName || any.club?.name || 'Club') : 'Club';
+          return `${name} bench: ${e.cnt}/${BENCH_CLUB_LIMIT}`;
+        })
+      ].join('\n');
+      alert('Club limits exceeded:\n' + msg);
+      return;
+    }
   }
 
   const token = localStorage.getItem('token');
@@ -637,6 +840,25 @@ async function saveLineup() {
     alert('Bench must have exactly 4 players');
     return;
   }
+  {
+    const { startersExceeded, benchExceeded, ok } = validateClubLimits();
+    if (!ok) {
+      const msg = [
+        ...startersExceeded.map(e => {
+          const any = selectedPlayers.find(p => p.slotPosition === 'START' && getClubId(p) === e.cid);
+          const name = any ? (any.club?.shortName || any.club?.name || 'Club') : 'Club';
+          return `${name} starters: ${e.cnt}/${STARTER_CLUB_LIMIT}`;
+        }),
+        ...benchExceeded.map(e => {
+          const any = selectedPlayers.find(p => p.slotPosition === 'BENCH' && getClubId(p) === e.cid);
+          const name = any ? (any.club?.shortName || any.club?.name || 'Club') : 'Club';
+          return `${name} bench: ${e.cnt}/${BENCH_CLUB_LIMIT}`;
+        })
+      ].join('\n');
+      alert('Club limits exceeded:\n' + msg);
+      return;
+    }
+  }
 
   try {
     const token = localStorage.getItem('token');
@@ -671,6 +893,25 @@ async function ensureTeamSaved() {
   if (selectedPlayers.length !== 15) {
     alert('Please complete your squad to 15 players before setting captains.');
     return false;
+  }
+  {
+    const { startersExceeded, benchExceeded, ok } = validateClubLimits();
+    if (!ok) {
+      const msg = [
+        ...startersExceeded.map(e => {
+          const any = selectedPlayers.find(p => p.slotPosition === 'START' && getClubId(p) === e.cid);
+          const name = any ? (any.club?.shortName || any.club?.name || 'Club') : 'Club';
+          return `${name} starters: ${e.cnt}/${STARTER_CLUB_LIMIT}`;
+        }),
+        ...benchExceeded.map(e => {
+          const any = selectedPlayers.find(p => p.slotPosition === 'BENCH' && getClubId(p) === e.cid);
+          const name = any ? (any.club?.shortName || any.club?.name || 'Club') : 'Club';
+          return `${name} bench: ${e.cnt}/${BENCH_CLUB_LIMIT}`;
+        })
+      ].join('\n');
+      alert('Club limits exceeded:\n' + msg);
+      return false;
+    }
   }
 
   // Build and save team + lineup
@@ -728,7 +969,7 @@ async function ensureTeamSaved() {
 
 // Auto-Complete: fill exact formation and bench (GK, DEF, MID, FWD) within budget
 async function autoComplete() {
-  // Build remaining slots
+  // Desired fixed layout
   const desiredStart = [
     { pos: 'GK', slotPosition: 'START', slotIndex: 0 },
     { pos: 'DEF', slotPosition: 'START', slotIndex: 1 },
@@ -749,14 +990,14 @@ async function autoComplete() {
     { pos: 'FWD', slotPosition: 'BENCH', slotIndex: 3 }
   ];
 
-  // Compute remaining budget
+  // Budget left
   const currentSpend = selectedPlayers.reduce((sum, p) => sum + Number(p.price || 0), 0);
   let remainingBudget = totalBudget - currentSpend;
 
-  // Helper: current selected ids
+  // Track selected ids to avoid duplicates
   const selectedIds = new Set(selectedPlayers.map(p => String(p._id)));
 
-  // Candidates per position sorted by cheapest first (tie-break by higher points)
+  // Sort candidates by cheapest first (tie-break: higher points)
   const byPos = {
     GK: allPlayers.filter(p => p.position === 'GK').sort((a, b) => (a.price - b.price) || ((b.totalPoints || 0) - (a.totalPoints || 0))),
     DEF: allPlayers.filter(p => p.position === 'DEF').sort((a, b) => (a.price - b.price) || ((b.totalPoints || 0) - (a.totalPoints || 0))),
@@ -764,21 +1005,46 @@ async function autoComplete() {
     FWD: allPlayers.filter(p => p.position === 'FWD').sort((a, b) => (a.price - b.price) || ((b.totalPoints || 0) - (a.totalPoints || 0))),
   };
 
-  // Helper: try to fill a single slot
+  // Live counts (start with existing selection)
+  const liveCounts = computeClubCounts();
+
+  const tryAdd = (slot, candidate) => {
+    const id = String(candidate._id);
+    if (selectedIds.has(id)) return false;
+    if (slot.slotPosition === 'BENCH' && slot.slotIndex > 0 && candidate.position === 'GK') return false;
+
+    // Budget
+    const price = Number(candidate.price || 0);
+    if (price > remainingBudget) return false;
+
+    // Club limit check using liveCounts
+    const cid = getClubId(candidate);
+    if (cid) {
+      if (slot.slotPosition === 'START') {
+        const next = (liveCounts.starters.get(cid) || 0) + 1;
+        if (next > STARTER_CLUB_LIMIT) return false;
+      } else {
+        const next = (liveCounts.bench.get(cid) || 0) + 1;
+        if (next > BENCH_CLUB_LIMIT) return false;
+      }
+    }
+
+    // Place candidate
+    selectedPlayers.push({ ...candidate, _id: id, slotPosition: slot.slotPosition, slotIndex: slot.slotIndex });
+    selectedIds.add(id);
+    remainingBudget -= price;
+    if (cid) {
+      if (slot.slotPosition === 'START') liveCounts.starters.set(cid, (liveCounts.starters.get(cid) || 0) + 1);
+      else liveCounts.bench.set(cid, (liveCounts.bench.get(cid) || 0) + 1);
+    }
+    return true;
+  };
+
+  // Helper to fill a slot if empty
   const fillSlot = (slot) => {
     if (selectedPlayers.find(p => p.slotPosition === slot.slotPosition && p.slotIndex === slot.slotIndex)) return true;
-    const list = byPos[slot.pos];
-    for (const cand of list) {
-      const id = String(cand._id);
-      if (selectedIds.has(id)) continue;
-      if (slot.slotPosition === 'BENCH' && slot.slotIndex > 0 && cand.position === 'GK') continue;
-      const price = Number(cand.price || 0);
-      if (price <= remainingBudget) {
-        selectedPlayers.push({ ...cand, _id: id, slotPosition: slot.slotPosition, slotIndex: slot.slotIndex });
-        selectedIds.add(id);
-        remainingBudget -= price;
-        return true;
-      }
+    for (const cand of byPos[slot.pos]) {
+      if (tryAdd(slot, cand)) return true;
     }
     return false;
   };
@@ -786,25 +1052,25 @@ async function autoComplete() {
   // Fill starters
   for (const slot of desiredStart) {
     if (!fillSlot(slot)) {
-      alert(`Auto-complete failed: not enough budget or ${slot.pos}s available for starters.`);
+      alert(`Auto-complete failed: budget/availability/club limit for ${slot.pos} (starters).`);
       updateTeamDisplay(); updateUI();
       return;
     }
   }
 
-  // Fill bench exactly (GK, DEF, MID, FWD)
+  // Fill bench (GK, DEF, MID, FWD) respecting bench club limit
   for (const slot of desiredBench) {
     if (!fillSlot(slot)) {
-      alert(`Auto-complete failed: not enough budget or ${slot.pos}s available for bench.`);
+      alert(`Auto-complete failed: budget/availability/club limit for ${slot.pos} (bench).`);
       updateTeamDisplay(); updateUI();
       return;
     }
   }
 
-  // Auto-assign captain and vice-captain if not set
+  // Auto-assign C/VC if missing
   if (!captainId || !viceCaptainId) {
     const starters = selectedPlayers.filter(p => p.slotPosition === 'START');
-    const sortedStarters = starters.sort((a, b) => (Number(b.totalPoints) || 0) - (Number(a.totalPoints) || 0));
+    const sortedStarters = starters.slice().sort((a, b) => (Number(b.totalPoints) || 0) - (Number(a.totalPoints) || 0));
     if (!captainId && sortedStarters[0]) captainId = String(sortedStarters[0]._id);
     if (!viceCaptainId && sortedStarters[1]) {
       const vc = sortedStarters.find(p => String(p._id) !== String(captainId));
@@ -816,6 +1082,7 @@ async function autoComplete() {
   updateUI();
   alert('Team auto-completed successfully!');
 }
+
 
 // Old captains save (prompt flow) retained for compatibility
 function openCaptainsModal() {

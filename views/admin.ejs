@@ -133,7 +133,20 @@
         </div>
         <div class="table-responsive">
           <table class="table table-striped">
-            <thead><tr><th>Name</th><th>Position</th><th>Club</th><th>Price</th><th>Points</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Position</th>
+                <th>Club</th>
+                <th>Price</th>
+                <th>Points</th>
+                <th>Active</th>
+                <th>Injured</th>
+                <th>Suspended</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            
             <tbody id="playersTable"><tr><td colspan="7" class="text-center">Loading...</td></tr></tbody>
           </table>
         </div>
@@ -287,9 +300,11 @@
         <th style="min-width:110px;">Penalties Saved</th>
         <th style="min-width:120px;">Penalties Missed</th>
         <th style="min-width:100px;">Own Goals</th>
+        <th style="min-width:90px;">MOTM</th>
         <th style="min-width:80px;">Actions</th>
       </tr>
     </thead>
+    
     <tbody id="perfTbody"></tbody>
   </table>
 </div>
