@@ -24,6 +24,22 @@ const BENCH_CLUB_LIMIT = 2;     // max bench per club
 let gwWeekNumber = null;
 let gwPointsMap = {}; // { playerId: pointsInActiveGW }
 let gwTeamTotal = 0;
+// Live transfer hit for the active GW (from server)
+let activeGwHit = 0;
+
+// Recompute header totals: Career live = sum(other GWs from weeklyPoints) + live active GW
+function updateHeaderTotals() {
+  // Sum all GWs except the active one from stored weeklyPoints
+  const prevSum = (userWeeklyPoints || []).reduce((sum, w) => {
+    if (gwWeekNumber && Number(w.gameweek) === Number(gwWeekNumber)) return sum;
+    return sum + Number(w.points || 0);
+  }, 0);
+
+  // Add live active GW (if any)
+  const careerLive = prevSum + (gwWeekNumber ? Number(gwTeamTotal || 0) : 0);
+
+  setText('careerTotalPoints', String(careerLive));
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
   const token = localStorage.getItem('token');
@@ -169,10 +185,14 @@ async function loadUserTeam() {
     setText('freeTransfers', freeTransfers.toString());
     setText('budgetRemaining', `${budgetBank.toFixed(1)}M`);
     userCareerTotal = Number(data.totalPoints || 0);
-userWeeklyPoints = Array.isArray(data.weeklyPoints) ? data.weeklyPoints.slice().sort((a, b) => a.gameweek - b.gameweek) : [];
-await loadActiveGWPoints();  
-setText('careerTotalPoints', userCareerTotal.toString());
-renderGwChips();
+    userWeeklyPoints = Array.isArray(data.weeklyPoints) ? data.weeklyPoints.slice().sort((a, b) => a.gameweek - b.gameweek) : [];
+    
+    // Show chips now (will use stored values for past GWs)
+    renderGwChips();
+    
+    // Compute header with whatever we have so far (active GW may not be loaded yet)
+    updateHeaderTotals();
+    
     const teamArr = Array.isArray(data.team) ? data.team : [];
     teamCreated = teamArr.length === 15;
 
@@ -360,22 +380,34 @@ async function loadActiveGWPoints() {
     gwWeekNumber = data.weekNumber;
     gwPointsMap = data.perPlayer || {};
     gwTeamTotal = Number(data.teamTotal || 0);
-    gwLocked = !!data.locked; // ADD THIS
+    gwLocked = !!data.locked;
 
-    // Update GW points + status
-    setText('activeGwPoints', gwWeekNumber ? `GW ${gwWeekNumber}: ${gwTeamTotal}` : 'GW —');
+    // Show "Active GW" with hit hint if any
+    activeGwHit = Number(data.transferCost || 0);
+    const label = gwWeekNumber
+      ? `GW ${gwWeekNumber}: ${gwTeamTotal}${activeGwHit > 0 ? ` (−${activeGwHit} hit)` : ''}`
+      : 'GW —';
+    setText('activeGwPoints', label);
+    
+
     const gwStatusEl = document.getElementById('gwStatus');
     if (gwStatusEl) {
-      const locked = !!data.locked;
-      const badge = locked ? '<span class="badge bg-secondary">Locked</span>' : '<span class="badge bg-success">Open</span>';
+      const badge = gwLocked
+        ? '<span class="badge bg-secondary">Locked</span>'
+        : '<span class="badge bg-success">Open</span>';
       gwStatusEl.innerHTML = `${badge}${gwWeekNumber ? ` <small class="ms-1">GW ${gwWeekNumber}</small>` : ''}`;
     }
 
     updateTeamDisplay();
+    // Recompute career live total and refresh the chips (active GW chip uses live)
+updateHeaderTotals();
+renderGwChips();
+
   } catch (e) {
     console.error('Error loading active GW points:', e);
   }
 }
+
 
 // Selection flow
 function selectPosition(position, index) {
@@ -511,58 +543,65 @@ async function selectPlayer(playerId) {
   if (!player) return;
 
   // Transfer flow: team created + transfer mode + replacing a specific slot
-  if (teamCreated && transferMode && transferOutPlayer) {
-    if (Number(freeTransfers) <= 0) {
-      const msg = gwLocked
-        ? 'You have 0 free transfers. This transfer will cost -4 points in THIS Gameweek.\nContinue?'
-        : 'You have 0 free transfers. This transfer will cost -4 points NEXT Gameweek.\nContinue?';
-      const ok = confirm(msg);
-      if (!ok) return;
-    }
-
-    // After a successful transfer
-
-    // Check per-club limits BEFORE calling the API
-    const reason = exceedsClubLimitFor(player, transferOutPlayer.slotPosition, transferOutPlayer);
-    if (reason) { alert(reason); return; }
-
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/teams/transfer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ outPlayerId: transferOutPlayer._id, inPlayerId: player._id })
-      });
-      const data = await res.json();
-      if (!res.ok) return alert(data.error || 'Transfer failed');
-
-      // Replace in same slot locally
-      const idx = selectedPlayers.findIndex(p => p.slotPosition === transferOutPlayer.slotPosition && p.slotIndex === transferOutPlayer.slotIndex);
-      if (idx >= 0) {
-        selectedPlayers[idx] = { ...player, _id: String(player._id), slotPosition: transferOutPlayer.slotPosition, slotIndex: transferOutPlayer.slotIndex };
-      }
-      setText('budgetRemaining', `${Number(data.budget ?? 0).toFixed(1)}M`);
-      freeTransfers = Number(data.freeTransfers ?? freeTransfers);
-      setText('freeTransfers', freeTransfers.toString());
-      if (data.penaltyAppliedTo === 'current') {
-        alert('Transfer hit applied: -4 this Gameweek.');
-      } else if (data.penaltyAppliedTo === 'next') {
-        alert('Transfer hit queued: -4 will be applied at the start of next Gameweek.');
-      }
-      updateTransferWarning();
-
-      transferOutPlayer = null;
-      closePlayerModal();
-      updateTeamDisplay();
-      updateUI();
-      await loadActiveGWPoints();
-      return;
-    } catch (e) {
-      console.error('Transfer error:', e);
-      alert('Transfer failed');
-      return;
-    }
+// Transfer flow: team created + transfer mode + replacing a specific slot
+if (teamCreated && transferMode && transferOutPlayer) {
+  // Ensure the server has a saved squad and contains the outgoing player
+  const ready = await ensureServerSquadReadyForTransfer(String(transferOutPlayer._id));
+  if (!ready) {
+    // Do NOT call /api/teams/transfer; UI freeTransfers remains unchanged
+    return;
   }
+
+  // Confirm hit messaging if no free transfers
+  if (Number(freeTransfers) <= 0) {
+    const msg = gwLocked
+      ? 'You have 0 free transfers. This transfer will cost -4 points in THIS Gameweek.\nContinue?'
+      : 'You have 0 free transfers. This transfer will cost -4 points NEXT Gameweek.\nContinue?';
+    const ok = confirm(msg);
+    if (!ok) return;
+  }
+
+  // Club limit check BEFORE calling API
+  const reason = exceedsClubLimitFor(player, transferOutPlayer.slotPosition, transferOutPlayer);
+  if (reason) { alert(reason); return; }
+
+  try {
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/teams/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ outPlayerId: transferOutPlayer._id, inPlayerId: player._id })
+    });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Transfer failed');
+
+    // Replace in same slot locally
+    const idx = selectedPlayers.findIndex(p => p.slotPosition === transferOutPlayer.slotPosition && p.slotIndex === transferOutPlayer.slotIndex);
+    if (idx >= 0) {
+      selectedPlayers[idx] = { ...player, _id: String(player._id), slotPosition: transferOutPlayer.slotPosition, slotIndex: transferOutPlayer.slotIndex };
+    }
+    setText('budgetRemaining', `${Number(data.budget ?? 0).toFixed(1)}M`);
+    freeTransfers = Number(data.freeTransfers ?? freeTransfers);
+    setText('freeTransfers', freeTransfers.toString());
+    updateTransferWarning();
+
+    transferOutPlayer = null;
+    closePlayerModal();
+    updateTeamDisplay();
+    updateUI();
+
+    // Refresh header (Active GW, Career, and server team snapshot) after a transfer
+    await loadActiveGWPoints();
+    await loadUserTeam();
+
+    return;
+  } catch (e) {
+    console.error('Transfer error:', e);
+    alert('Transfer failed');
+    return;
+  }
+}
+
 
   // Initial creation or replacement in local layout
   const existingAtSlot = selectedPlayers.find(p => p.slotPosition === currentPosition && p.slotIndex === currentSlotIndex);
@@ -750,8 +789,9 @@ function updateTeamDisplay() {
   }
 
   if (gwWeekNumber != null) {
-    setText('activeGwPoints', `GW ${gwWeekNumber}: ${gwTeamTotal}`);
+    setText('activeGwPoints', `GW ${gwWeekNumber}: ${gwTeamTotal}${activeGwHit > 0 ? ` (−${activeGwHit} hit)` : ''}`);
   }
+  
 }
 
 
@@ -777,14 +817,22 @@ updateTransferWarning();
 function renderGwChips() {
   const el = document.getElementById('gwChips');
   if (!el) return;
-  if (!userWeeklyPoints.length) {
+
+  if (!userWeeklyPoints || userWeeklyPoints.length === 0) {
     el.innerHTML = '<small class="text-white-50">No GW history yet</small>';
     return;
   }
-  el.innerHTML = userWeeklyPoints
-    .map(w => `<span class="badge bg-light text-dark me-1 mb-1">GW ${w.gameweek}: ${Number(w.points || 0)}</span>`)
-    .join('');
+
+  el.innerHTML = userWeeklyPoints.map(w => {
+    const isActive = gwWeekNumber && Number(w.gameweek) === Number(gwWeekNumber);
+    const val = isActive ? Number(gwTeamTotal || 0) : Number(w.points || 0);
+    const hitBadge = isActive && activeGwHit > 0
+      ? `<span class="badge bg-danger ms-1">-${activeGwHit}</span>`
+      : '';
+    return `<span class="badge bg-light text-dark me-1 mb-1">GW ${w.gameweek}: ${val}</span>${hitBadge}`;
+  }).join('');
 }
+
 
 function setText(id, text) {
   const el = document.getElementById(id);
@@ -1024,6 +1072,50 @@ async function ensureTeamSaved() {
   }
 
   teamCreated = true;
+  return true;
+}
+// Fetch server-saved squad player IDs (15)
+async function fetchServerTeamIds() {
+  const token = localStorage.getItem('token');
+  const res = await fetch('/api/teams/my-team', { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const ids = (data.team || []).map(s => String(s.player?._id || s.player)).filter(Boolean);
+  return ids;
+}
+
+// Ensure the server has a saved 15-man squad AND contains the outgoing player
+// Returns true if OK (server has 15 and contains outId); otherwise tries to auto-save and re-checks
+async function ensureServerSquadReadyForTransfer(outId) {
+  // 1) Fetch server squad
+  let ids = await fetchServerTeamIds();
+
+  // 2) If not 15 on server, attempt to save current 15
+  if (ids.length !== 15) {
+    const okSaved = await ensureTeamSaved();
+    if (!okSaved) {
+      alert('Please complete and save your 15-man squad before making transfers.');
+      return false;
+    }
+    // Re-fetch after save
+    ids = await fetchServerTeamIds();
+    if (ids.length !== 15) {
+      alert('Your squad was not saved properly. Please try saving your team again.');
+      return false;
+    }
+  }
+
+  // 3) Verify the outgoing player is in the server squad
+  if (!ids.includes(String(outId))) {
+    // Try to reload server team view to catch a recent change
+    await loadUserTeam();
+    const reIds = await fetchServerTeamIds();
+    if (!reIds.includes(String(outId))) {
+      alert('This player is not in your saved squad on the server. Save your squad first, then try the transfer again.');
+      return false;
+    }
+  }
+
   return true;
 }
 

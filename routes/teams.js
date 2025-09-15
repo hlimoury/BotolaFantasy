@@ -260,19 +260,37 @@ router.post('/transfer', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: `Transfer exceeds budget (${newCost}M > ${BUDGET_CAP}M)` });
     }
 
-    // Apply transfer
-    const wasCaptain = user.team[idx].captain;
-    const wasVice = user.team[idx].viceCaptain;
-    user.team.splice(idx, 1);
-    user.team.push({ player: inP._id, captain: false, viceCaptain: false });
+   // Apply transfer
+const wasCaptain = user.team[idx].captain;
+const wasVice = user.team[idx].viceCaptain;
 
-    if (wasCaptain || wasVice) {
-      user.team.forEach(s => { s.captain = false; s.viceCaptain = false; });
-    }
+// 1) Update saved lineup arrays so the change persists on the pitch:
+//    If the outgoing player is in startingXI or benchOrder, replace with incoming at the same index.
+if (Array.isArray(user.startingXI) && user.startingXI.length) {
+  const xiIdx = user.startingXI.findIndex(p => String(p) === String(outPlayerId));
+  if (xiIdx >= 0) {
+    user.startingXI[xiIdx] = inP._id; // keep slot, replace id
+  }
+}
+if (Array.isArray(user.benchOrder) && user.benchOrder.length) {
+  const bIdx = user.benchOrder.findIndex(p => String(p) === String(outPlayerId));
+  if (bIdx >= 0) {
+    user.benchOrder[bIdx] = inP._id;
+  }
+}
 
-    user.budget = BUDGET_CAP - newCost;
+// 2) Update squad list
+user.team.splice(idx, 1);
+user.team.push({ player: inP._id, captain: false, viceCaptain: false });
 
-// Transfer costs (NEW: apply -4 now if after deadline, else carry to next GW)
+if (wasCaptain || wasVice) {
+  user.team.forEach(s => { s.captain = false; s.viceCaptain = false; });
+}
+
+// 3) Budget update
+user.budget = BUDGET_CAP - newCost;
+
+// 4) Transfer costs (APPLY −4 IMMEDIATELY to the CURRENT ACTIVE GW if exists)
 let cost = 0;
 
 if ((user.freeTransfers ?? 1) > 0) {
@@ -284,27 +302,20 @@ if ((user.freeTransfers ?? 1) > 0) {
   cost = EXTRA_TRANSFER_COST;
 
   if (gw) {
-    const started = isLocked(gw.deadline || gw.startDate); // true if GW deadline passed
-    if (started) {
-      // Apply penalty to CURRENT gameweek immediately
-      user.weeklyPoints = user.weeklyPoints || [];
-      const wIdx = user.weeklyPoints.findIndex(w => w.gameweek === gw.weekNumber);
-      if (wIdx >= 0) {
-        user.weeklyPoints[wIdx].points -= cost;
-        user.weeklyPoints[wIdx].transferCost = (user.weeklyPoints[wIdx].transferCost || 0) + cost;
-      } else {
-        user.weeklyPoints.push({ gameweek: gw.weekNumber, points: -cost, transferCost: cost });
-      }
-      // Update season total now
-      user.totalPoints = user.weeklyPoints.reduce((a, w) => a + (w.points || 0), 0);
-      res.locals._penaltyAppliedTo = 'current';
+    // Apply penalty to CURRENT active gameweek now
+    user.weeklyPoints = user.weeklyPoints || [];
+    const wIdx = user.weeklyPoints.findIndex(w => w.gameweek === gw.weekNumber);
+    if (wIdx >= 0) {
+      user.weeklyPoints[wIdx].points = (user.weeklyPoints[wIdx].points || 0) - cost;
+      user.weeklyPoints[wIdx].transferCost = (user.weeklyPoints[wIdx].transferCost || 0) + cost;
     } else {
-      // GW not started yet -> carry penalty to NEXT GW
-      user.pendingTransferPenalty = (user.pendingTransferPenalty || 0) + cost;
-      res.locals._penaltyAppliedTo = 'next';
+      user.weeklyPoints.push({ gameweek: gw.weekNumber, points: -cost, transferCost: cost });
     }
+    // Update season total now
+    user.totalPoints = user.weeklyPoints.reduce((a, w) => a + (w.points || 0), 0);
+    res.locals._penaltyAppliedTo = 'current';
   } else {
-    // No active GW -> carry penalty to NEXT GW when it activates
+    // No active GW; carry to next activation if needed
     user.pendingTransferPenalty = (user.pendingTransferPenalty || 0) + cost;
     res.locals._penaltyAppliedTo = 'next';
   }
@@ -321,19 +332,17 @@ user.transferHistory.push({
 
 await user.save();
 
-// Return updated
-const updated = await User.findById(user._id)
-  .populate({ path: 'team.player', populate: { path: 'club', select: 'name shortName logo' } });
+    // Return updated
+    const updated = await User.findById(user._id)
+      .populate({ path: 'team.player', populate: { path: 'club', select: 'name shortName logo' } });
 
-res.json({
-  message: `Transfer completed${cost ? ` (-${cost} pts)` : ''}`,
-  team: updated.team,
-  budget: updated.budget,
-  freeTransfers: updated.freeTransfers,
-  transfersMadeThisGW: updated.transfersMadeThisGW,
-  penaltyAppliedTo: res.locals._penaltyAppliedTo || 'none' // 'current' | 'next' | 'none'
-});
-
+    res.json({
+      message: `Transfer completed${cost ? ` (-${cost} pts)` : ''}`,
+      team: updated.team,
+      budget: updated.budget,
+      freeTransfers: updated.freeTransfers,
+      transfersMadeThisGW: updated.transfersMadeThisGW
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -369,12 +378,13 @@ async function buildDefaultLineup(user) {
 }
 
 // GET per-player Active GW points + team live total (with autosubs and C/VC)
+// Subtracts current GW transfer hit (weeklyPoints.transferCost) from teamTotal
 router.get('/gw-points', authMiddleware, async (req, res) => {
   try {
     const gw = await getActiveGameweek();
     if (!gw) return res.json({ weekNumber: null, perPlayer: {}, teamTotal: 0, locked: false });
 
-    // Aggregate per-player points and minutes for this GW
+    // Aggregate per-player points/minutes for this GW
     const matches = await Match.find({ gameweek: gw._id }).lean();
     const perPoints = new Map(); // pid -> points
     const perMinutes = new Map(); // pid -> minutes
@@ -389,71 +399,86 @@ router.get('/gw-points', authMiddleware, async (req, res) => {
 
     const user = await User.findById(req.user._id).populate('team.player startingXI benchOrder');
     if (!user || !user.team || user.team.length === 0) {
-      return res.json({ weekNumber: gw.weekNumber, perPlayer: Object.fromEntries(perPoints), teamTotal: 0, locked: false });
+      return res.json({
+        weekNumber: gw.weekNumber,
+        perPlayer: Object.fromEntries(perPoints.entries()),
+        teamTotal: 0,
+        locked: isLocked(gw.deadline || gw.startDate),
+        transferCost: 0
+      });
     }
 
-    // Build XI/bench
+    // Build XI/bench (fallback 1-4-4-2)
     let xi = (user.startingXI || []).map(p => String(p._id || p));
     let bench = (user.benchOrder || []).map(p => String(p._id || p));
     if (xi.length !== 11 || bench.length !== 4) {
-      const def = await buildDefaultLineup(user);
-      xi = def.xi;
-      bench = def.bench;
+      const ids = user.team.map(t => String(t.player._id || t.player));
+      const docs = await Player.find({ _id: { $in: ids } }).select('position');
+      const byPos = { GK: [], DEF: [], MID: [], FWD: [] };
+      docs.forEach(d => byPos[d.position].push(String(d._id)));
+      const tmp = [];
+      const take = (arr, n) => tmp.push(...arr.slice(0, n));
+      take(byPos.GK, 1); take(byPos.DEF, 4); take(byPos.MID, 4); take(byPos.FWD, 2);
+      xi = tmp.slice(0, 11);
+      const rest = ids.filter(id => !new Set(xi).has(id));
+      const outfield = rest.filter(id => !byPos.GK.includes(id));
+      const gks = rest.filter(id => byPos.GK.includes(id));
+      bench = [gks[0], outfield[0], outfield[1], outfield[2]].filter(Boolean).slice(0, 4);
     }
 
-    // Autosubs
+    // Autosubs by minutes only (you may have another version that checks injured/suspended; keep that one instead)
     const minutesOf = (pid) => perMinutes.get(String(pid)) || 0;
-    // GK swap
-    const gkIdx = await (async () => {
-      const gkDocs = await Player.find({ _id: { $in: xi } }).select('position');
-      const posMap = new Map(gkDocs.map(p => [String(p._id), p.position]));
-      return xi.findIndex(id => posMap.get(String(id)) === 'GK');
-    })();
 
-    if (gkIdx >= 0 && minutesOf(xi[gkIdx]) === 0 && bench[0]) {
-      const bench0 = await Player.findById(bench[0]).select('position');
-      if (bench0 && bench0.position === 'GK' && minutesOf(bench[0]) > 0) {
-        xi[gkIdx] = bench[0];
-      }
+    // GK autosub
+    const xiDocs = await Player.find({ _id: { $in: xi } }).select('position');
+    const posMap = new Map(xiDocs.map(p => [String(p._id), p.position]));
+    const gkIdx = xi.findIndex(id => posMap.get(String(id)) === 'GK');
+    const benchDocs = await Player.find({ _id: { $in: bench } }).select('position');
+    const benchPos = new Map(benchDocs.map(p => [String(p._id), p.position]));
+    if (gkIdx >= 0 && minutesOf(xi[gkIdx]) === 0 && bench[0] && benchPos.get(String(bench[0])) === 'GK' && minutesOf(bench[0]) > 0) {
+      xi[gkIdx] = bench[0];
     }
 
     // Outfield subs
-    const xiDocs = await Player.find({ _id: { $in: xi } }).select('position');
-    const posMap = new Map(xiDocs.map(p => [String(p._id), p.position]));
-    const benchDocs = await Player.find({ _id: { $in: bench } }).select('position');
-    const benchPos = new Map(benchDocs.map(p => [String(p._id), p.position]));
     const outfieldBench = bench.slice(1).filter(id => benchPos.get(String(id)) !== 'GK' && minutesOf(id) > 0);
-
     for (let i = 0; i < xi.length; i++) {
       const id = String(xi[i]);
       const pos = posMap.get(id);
       if (pos === 'GK') continue;
       if (minutesOf(id) === 0 && outfieldBench.length) {
-        const rep = outfieldBench.shift();
-        xi[i] = rep;
+        xi[i] = outfieldBench.shift();
       }
     }
 
-    // Compute total; C/VC logic
+    // Sum XI; C/VC
     const teamCap = user.team.find(t => t.captain)?.player?._id || user.team.find(t => t.captain)?.player;
     const teamVc = user.team.find(t => t.viceCaptain)?.player?._id || user.team.find(t => t.viceCaptain)?.player;
     const xiSet = new Set(xi.map(String));
+    const ptsOf = (id) => perPoints.get(String(id)) || 0;
 
     let total = 0;
-    for (const id of xiSet) total += (perPoints.get(String(id)) || 0);
+    xiSet.forEach(id => total += ptsOf(id));
+    if (teamCap && xiSet.has(String(teamCap)) && minutesOf(String(teamCap)) > 0) total += ptsOf(String(teamCap));
+    else if (teamVc && xiSet.has(String(teamVc)) && minutesOf(String(teamVc)) > 0) total += ptsOf(String(teamVc));
 
-    let doubler = null;
-    if (teamCap && xiSet.has(String(teamCap)) && minutesOf(String(teamCap)) > 0) doubler = String(teamCap);
-    else if (teamVc && xiSet.has(String(teamVc)) && minutesOf(String(teamVc)) > 0) doubler = String(teamVc);
-    if (doubler) total += (perPoints.get(doubler) || 0);
+    // SUBTRACT current GW transfer hit
+    const w = (user.weeklyPoints || []).find(w => w.gameweek === gw.weekNumber);
+    const transferCost = Number(w?.transferCost || 0);
+    total -= transferCost;
 
-    const perPlayer = Object.fromEntries(Array.from(perPoints.entries()));
     const locked = isLocked(gw.deadline || gw.startDate);
-    return res.json({ weekNumber: gw.weekNumber, perPlayer, teamTotal: total, locked });
+    return res.json({
+      weekNumber: gw.weekNumber,
+      perPlayer: Object.fromEntries(perPoints.entries()),
+      teamTotal: total,
+      transferCost,
+      locked
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 });
+
 
 // Clear my team
 router.post('/clear', authMiddleware, async (req, res) => {
