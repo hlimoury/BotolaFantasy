@@ -411,21 +411,24 @@ renderGwChips();
 
 // Selection flow
 function selectPosition(position, index) {
-  currentPosition = position; // 'START'|'BENCH'
+  currentPosition = position; // 'START' | 'BENCH'
   currentSlotIndex = index;
 
   const existingPlayer = selectedPlayers.find(p => p.slotPosition === position && p.slotIndex === index);
 
-  // If team is already created and not in transfer mode, block removal/replacement
+  // If team is already created and not in transfer mode, block replacement
   if (teamCreated && existingPlayer && !transferMode) {
     alert('Enable Transfer Mode to replace players.');
     return;
   }
 
-  // In transfer mode: clicking a filled slot starts transfer out
+  // In transfer mode: clicking a filled slot starts transfer-out
   if (transferMode && existingPlayer) {
     transferOutPlayer = existingPlayer;
-    openPlayerModal(existingPlayer.position); // restrict to same position to keep limits
+    // For bench, still restrict to the fixed slot position
+    const benchMap = { 0: 'GK', 1: 'DEF', 2: 'MID', 3: 'FWD' };
+    const fixedBenchPos = (position === 'BENCH') ? benchMap[index] : null;
+    openPlayerModal(fixedBenchPos || existingPlayer.position);
     return;
   }
 
@@ -437,26 +440,39 @@ function selectPosition(position, index) {
     else if (index >= 5 && index <= 8) positionFilter = 'MID';
     else if (index >= 9 && index <= 10) positionFilter = 'FWD';
   } else if (position === 'BENCH') {
-    if (index === 0) positionFilter = 'GK'; // bench GK
-    else positionFilter = null; // any outfield, filter out GK below
+    // Fixed bench positions
+    const benchMap = { 0: 'GK', 1: 'DEF', 2: 'MID', 3: 'FWD' };
+    positionFilter = benchMap[index] || null;
   }
+
   openPlayerModal(positionFilter);
 }
 
+// REPLACE this function
 function openPlayerModal(positionFilter) {
   const modal = document.getElementById('playerModal');
   const modalPosition = document.getElementById('modalPosition');
-  modalPosition.textContent = positionFilter ? positionFilter : (currentPosition === 'BENCH' && currentSlotIndex > 0 ? 'Outfield' : 'Any');
+
+  // If BENCH slot and no explicit filter provided, enforce fixed mapping
+  const benchMap = { 0: 'GK', 1: 'DEF', 2: 'MID', 3: 'FWD' };
+  if (currentPosition === 'BENCH' && (positionFilter == null || positionFilter === '')) {
+    positionFilter = benchMap[currentSlotIndex] || null;
+  }
+
+  // Header text
+  modalPosition.textContent = positionFilter
+    ? positionFilter
+    : (currentPosition === 'BENCH' ? (benchMap[currentSlotIndex] || 'Any') : 'Any');
 
   // Build base list from current slot constraints
   let list = allPlayers.slice();
   if (positionFilter) {
     list = list.filter(p => p.position === positionFilter);
-  } else if (currentPosition === 'BENCH' && currentSlotIndex > 0) {
-    list = list.filter(p => p.position !== 'GK');
   }
+
+  // If in transfer mode, still restrict to the same position being replaced
   if (transferMode && transferOutPlayer) {
-    list = list.filter(p => p.position === transferOutPlayer.position);
+    list = list.filter(p => p.position === (positionFilter || transferOutPlayer.position));
   }
 
   // Exclude already selected players (except the one being transferred out)
@@ -464,15 +480,16 @@ function openPlayerModal(positionFilter) {
   if (transferOutPlayer) selectedIds.delete(String(transferOutPlayer._id));
   list = list.filter(p => !selectedIds.has(String(p._id)));
 
-  // Cache base list for live filtering (search/club/sort)
+  // Cache for search/sort filtering
   modalBaseList = list;
 
-  // Populate club dropdown from the base list and render
+  // Populate club dropdown and render
   setClubFilterOptions(modalBaseList);
   displayPlayersInModal(modalBaseList);
 
   modal.classList.add('active');
 }
+
 
 
 function setClubFilterOptions(players) {
@@ -614,10 +631,13 @@ if (teamCreated && transferMode && transferOutPlayer) {
   }
 
   // Bench constraints by type
-  if (currentPosition === 'BENCH') {
-    if (currentSlotIndex === 0 && player.position !== 'GK') return alert('Bench slot 0 must be a GK');
-    if (currentSlotIndex > 0 && player.position === 'GK') return alert('Bench outfield slots cannot be GK');
-  }
+if (currentPosition === 'BENCH') {
+  if (currentSlotIndex === 0 && player.position !== 'GK') return alert('Bench slot 0 must be a GK');
+  if (currentSlotIndex === 1 && player.position !== 'DEF') return alert('Bench slot 1 must be a DEF');
+  if (currentSlotIndex === 2 && player.position !== 'MID') return alert('Bench slot 2 must be a MID');
+  if (currentSlotIndex === 3 && player.position !== 'FWD') return alert('Bench slot 3 must be a FWD');
+}
+
   // Starter slot strict position
   if (currentPosition === 'START') {
     if (currentSlotIndex === 0 && player.position !== 'GK') return alert('This slot is GK only');
@@ -728,7 +748,10 @@ function updateTeamDisplay() {
       const statusBadge = player.isInjured
         ? '<span class="badge bg-danger position-absolute" style="top:22px;right:4px;">INJ</span>'
         : (player.isSuspended ? '<span class="badge bg-warning text-dark position-absolute" style="top:22px;right:4px;">SUS</span>' : '');
-      const label = (pos === 'BENCH') ? (idx === 0 ? 'GK' : 'SUB') : player.position;
+        const label = (pos === 'BENCH')
+        ? (idx === 0 ? 'GK' : idx === 1 ? 'DEF' : idx === 2 ? 'MID' : 'FWD')
+        : player.position;
+      
 
       // If starters of this player's club exceed limit, mark starter slots of that club
       if (pos === 'START') {
@@ -758,7 +781,7 @@ function updateTeamDisplay() {
         else if (idx >= 5 && idx <= 8) label = 'MID';
         else if (idx >= 9 && idx <= 10) label = 'FWD';
       } else {
-        label = (idx === 0 ? 'GK' : 'OUT');
+        label = (idx === 0 ? 'GK' : idx === 1 ? 'DEF' : idx === 2 ? 'MID' : 'FWD');
       }
       slot.innerHTML = `
         <span class="position-label">${label}</span>
