@@ -1087,10 +1087,10 @@
     font-size: 0.48rem;
   }
 }
-
+/* 
 .form-select-sm{
   padding-bottom: 1.25rem !important; 
-}
+} */
 /* Visual warning for starter slots exceeding club max */
 .position-slot.limit-exceeded {
   border-color: #dc3545 !important;
@@ -1114,6 +1114,21 @@
   border-radius: 10px;
   font-weight: 600;
 }
+
+.modal-filters {
+  display: flex;
+  gap: 10px;
+  align-items: center; /* ensures selects and inputs are vertically centered */
+  overflow-x: auto;
+}
+
+.form-select-sm {
+  padding: 0.25rem 0.5rem; /* standard Bootstrap padding */
+  height: auto;
+  min-height: 1.8rem;
+}
+
+
 
   </style>
 </head>
