@@ -29,6 +29,74 @@
   transform: translateY(-2px);
 }
 
+.adstera-banner-container {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 1px solid #dee2e6;
+  padding: 15px 0;
+  margin-bottom: 20px;
+}
+
+.adstera-wrapper {
+  background: #fff;
+  border-radius: 8px;
+  padding: 15px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  border: 1px solid #e9ecef;
+  max-width: 728px;
+  margin: 0 auto;
+  text-align: center;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Loading state while ad loads */
+.adstera-wrapper:empty {
+  background: linear-gradient(90deg, #f0f0f0 25%, transparent 37%, transparent 63%, #f0f0f0 75%);
+  background-size: 400% 100%;
+  animation: loading-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes loading-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: -100% 50%; }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .adstera-banner-container {
+    padding: 10px 0;
+    margin-bottom: 15px;
+  }
+  
+  .adstera-wrapper {
+    margin: 0 10px;
+    padding: 12px;
+    max-width: 100%;
+    min-height: 70px;
+  }
+}
+
+@media (max-width: 480px) {
+  .adstera-wrapper {
+    border-radius: 6px;
+    padding: 10px;
+    min-height: 60px;
+  }
+}
+
+/* Match your app theme */
+.navbar + .adstera-banner-container {
+  border-top: 3px solid #28a745; /* Match your primary color */
+}
+
+/* Subtle hover effect (optional) */
+.adstera-wrapper:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  transition: all 0.3s ease;
+}
   </style>
 </head>
 <body>
@@ -55,7 +123,14 @@
     </div>
   </div>
 </nav>
-
+<div class="adstera-banner-container">
+  <div class="container">
+    <div class="adstera-wrapper">
+      <script async="async" data-cfasync="false" src="//pl27667156.revenuecpmgate.com/edb1d37ac192d8840b043dc678e1f64f/invoke.js"></script>
+      <div id="container-edb1d37ac192d8840b043dc678e1f64f"></div>
+    </div>
+  </div>
+</div>
 <div class="container py-4">
   <h2 class="mb-4">Private Leagues</h2>
   <div id="leaguesAlert"></div>
