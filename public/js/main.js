@@ -20,6 +20,12 @@ function renderNavbar() {
   if (!token) {
     // Logged out navbar
     nav.innerHTML = `
+    <li class="nav-item">
+            <a class="nav-link" href="https://instagram.com/fantasybotola" target="_blank" title="Follow us on Instagram">
+              <i class="bi bi-instagram"></i>
+            </a>
+          </li>
+          
       <li class="nav-item">
         <a class="nav-link ${active('/leaderboard')}" href="/leaderboard">Leaderboard</a>
       </li>
@@ -35,6 +41,12 @@ function renderNavbar() {
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   nav.innerHTML = `
+  <li class="nav-item">
+            <a class="nav-link" href="https://instagram.com/fantasybotola" target="_blank" title="Follow us on Instagram">
+              <i class="bi bi-instagram"></i>
+            </a>
+          </li>
+          
     <li class="nav-item">
       <a class="nav-link ${active('/dashboard')}" href="/dashboard">My Team</a>
     </li>
