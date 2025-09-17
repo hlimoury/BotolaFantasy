@@ -26,6 +26,19 @@ let gwPointsMap = {}; // { playerId: pointsInActiveGW }
 let gwTeamTotal = 0;
 // Live transfer hit for the active GW (from server)
 let activeGwHit = 0;
+// Swap system
+let swapAnchor = null;            // { slotPosition: 'START'|'BENCH', slotIndex: number, player: object }
+let swapAllowedTargets = new Set(); // e.g., new Set(['START-1','BENCH-2'])
+
+const START_MAP = { 0:'GK', 1:'DEF', 2:'DEF', 3:'DEF', 4:'DEF', 5:'MID', 6:'MID', 7:'MID', 8:'MID', 9:'FWD', 10:'FWD' };
+const BENCH_MAP = { 0:'GK', 1:'DEF', 2:'MID', 3:'FWD' };
+
+function slotRequiredPosition(slotPosition, slotIndex) {
+  return slotPosition === 'START' ? START_MAP[slotIndex] : BENCH_MAP[slotIndex];
+}
+function slotKey(slotPosition, slotIndex) {
+  return `${slotPosition}-${slotIndex}`;
+}
 
 // Recompute header totals: Career live = sum(other GWs from weeklyPoints) + live active GW
 function updateHeaderTotals() {
@@ -410,29 +423,40 @@ renderGwChips();
 
 
 // Selection flow
+// REPLACE selectPosition
 function selectPosition(position, index) {
-  currentPosition = position; // 'START' | 'BENCH'
+  currentPosition = position; // 'START'|'BENCH'
   currentSlotIndex = index;
 
   const existingPlayer = selectedPlayers.find(p => p.slotPosition === position && p.slotIndex === index);
 
-  // If team is already created and not in transfer mode, block replacement
-  if (teamCreated && existingPlayer && !transferMode) {
-    alert('Enable Transfer Mode to replace players.');
+  // If a swap anchor is already selected: try to swap with this clicked slot
+  if (swapAnchor) {
+    trySwapWithAnchor(position, index, existingPlayer);
     return;
   }
 
-  // In transfer mode: clicking a filled slot starts transfer-out
+  // If team is already created and not in transfer mode, clicking a filled slot will start swap (not transfer)
+  if (teamCreated && existingPlayer && !transferMode) {
+    if (gwLocked) {
+      showToast('Lineup is locked for the active Gameweek', 'warning', 2500);
+      return;
+    }
+    beginSwap(position, index, existingPlayer);
+    return;
+  }
+
+  // Transfer mode: clicking filled slot -> transfer out flow (existing behavior)
   if (transferMode && existingPlayer) {
     transferOutPlayer = existingPlayer;
-    // For bench, still restrict to the fixed slot position
+    // For bench: fixed mapping
     const benchMap = { 0: 'GK', 1: 'DEF', 2: 'MID', 3: 'FWD' };
     const fixedBenchPos = (position === 'BENCH') ? benchMap[index] : null;
     openPlayerModal(fixedBenchPos || existingPlayer.position);
     return;
   }
 
-  // Initial creation or empty slot
+  // Empty slot -> open modal to add a new player (initial team creation remains intact)
   let positionFilter = null;
   if (position === 'START') {
     if (index === 0) positionFilter = 'GK';
@@ -440,12 +464,136 @@ function selectPosition(position, index) {
     else if (index >= 5 && index <= 8) positionFilter = 'MID';
     else if (index >= 9 && index <= 10) positionFilter = 'FWD';
   } else if (position === 'BENCH') {
-    // Fixed bench positions
-    const benchMap = { 0: 'GK', 1: 'DEF', 2: 'MID', 3: 'FWD' };
+    const benchMap = { 0:'GK', 1:'DEF', 2:'MID', 3:'FWD' };
     positionFilter = benchMap[index] || null;
   }
-
   openPlayerModal(positionFilter);
+}
+
+function beginSwap(slotPosition, slotIndex, player) {
+  clearSwapState();
+  swapAnchor = { slotPosition, slotIndex, player };
+
+  // Compute allowed targets: opposite zone only, must be filled, positions must fit both slots, and club limits must hold
+  swapAllowedTargets = computeAllowedTargets(swapAnchor);
+
+  // Visual + toast
+  updateTeamDisplay();
+  showToast('Tap a target slot to swap', 'info', 2000);
+}
+
+function clearSwapState() {
+  swapAnchor = null;
+  swapAllowedTargets = new Set();
+}
+
+function computeAllowedTargets(anchor) {
+  const targets = new Set();
+  const opposite = (anchor.slotPosition === 'START') ? 'BENCH' : 'START';
+
+  // Consider every slot on the opposite side
+  const maxIdx = (opposite === 'START') ? 10 : 3;
+  for (let idx = 0; idx <= maxIdx; idx++) {
+    const targetPlayer = selectedPlayers.find(p => p.slotPosition === opposite && p.slotIndex === idx);
+    if (!targetPlayer) continue; // swap requires a filled slot
+
+    if (canSwapBetween(
+      { slotPosition: anchor.slotPosition, slotIndex: anchor.slotIndex, player: anchor.player },
+      { slotPosition: opposite, slotIndex: idx, player: targetPlayer }
+    )) {
+      targets.add(slotKey(opposite, idx));
+    }
+  }
+  return targets;
+}
+
+function canSwapBetween(a, b) {
+  // Must be bench <-> start
+  if (a.slotPosition === b.slotPosition) return false;
+
+  // GW lock blocks any lineup change
+  if (teamCreated && gwLocked) return false;
+
+  // Position constraints for both sides
+  const reqA = slotRequiredPosition(a.slotPosition, a.slotIndex);
+  const reqB = slotRequiredPosition(b.slotPosition, b.slotIndex);
+  if (a.player.position !== reqA) return false; // anchor currently sits in correct slot type by construction
+  if (b.player.position !== reqB) return false;
+
+  // After swap: a goes to b.slot; b goes to a.slot -> both must match the new slot requirements
+  if (a.player.position !== reqB) return false;
+  if (b.player.position !== reqA) return false;
+
+  // Club limits simulation:
+  const { starters, bench } = computeClubCounts(selectedPlayers);
+
+  const aCid = getClubId(a.player);
+  const bCid = getClubId(b.player);
+
+  // Remove current occupancy
+  if (a.slotPosition === 'START') starters.set(aCid, Math.max(0, (starters.get(aCid) || 0) - 1));
+  else bench.set(aCid, Math.max(0, (bench.get(aCid) || 0) - 1));
+
+  if (b.slotPosition === 'START') starters.set(bCid, Math.max(0, (starters.get(bCid) || 0) - 1));
+  else bench.set(bCid, Math.max(0, (bench.get(bCid) || 0) - 1));
+
+  // Add swapped occupancy
+  if (b.slotPosition === 'START') starters.set(aCid, (starters.get(aCid) || 0) + 1);
+  else bench.set(aCid, (bench.get(aCid) || 0) + 1);
+
+  if (a.slotPosition === 'START') starters.set(bCid, (starters.get(bCid) || 0) + 1);
+  else bench.set(bCid, (bench.get(bCid) || 0) + 1);
+
+  // Validate limits
+  if ((starters.get(aCid) || 0) > STARTER_CLUB_LIMIT) return false;
+  if ((starters.get(bCid) || 0) > STARTER_CLUB_LIMIT) return false;
+  if ((bench.get(aCid) || 0) > BENCH_CLUB_LIMIT) return false;
+  if ((bench.get(bCid) || 0) > BENCH_CLUB_LIMIT) return false;
+
+  return true;
+}
+
+function trySwapWithAnchor(clickedSlotPosition, clickedSlotIndex, clickedPlayer) {
+  // Cancel if clicking the anchor again
+  if (swapAnchor && swapAnchor.slotPosition === clickedSlotPosition && swapAnchor.slotIndex === clickedSlotIndex) {
+    clearSwapState();
+    updateTeamDisplay();
+    return;
+  }
+
+  const key = slotKey(clickedSlotPosition, clickedSlotIndex);
+  if (!swapAllowedTargets.has(key)) {
+    showToast('Invalid swap target', 'warning', 1800);
+    return;
+  }
+  if (!clickedPlayer) {
+    showToast('Target slot is empty', 'warning', 1800);
+    return;
+  }
+
+  // Perform swap
+  performSwap(swapAnchor, { slotPosition: clickedSlotPosition, slotIndex: clickedSlotIndex, player: clickedPlayer });
+}
+
+function performSwap(a, b) {
+  const iA = selectedPlayers.findIndex(p => p.slotPosition === a.slotPosition && p.slotIndex === a.slotIndex);
+  const iB = selectedPlayers.findIndex(p => p.slotPosition === b.slotPosition && p.slotIndex === b.slotIndex);
+  if (iA < 0 || iB < 0) return;
+
+  // Swap slot markers
+  const tmpPos = selectedPlayers[iA].slotPosition;
+  const tmpIdx = selectedPlayers[iA].slotIndex;
+
+  selectedPlayers[iA].slotPosition = selectedPlayers[iB].slotPosition;
+  selectedPlayers[iA].slotIndex    = selectedPlayers[iB].slotIndex;
+
+  selectedPlayers[iB].slotPosition = tmpPos;
+  selectedPlayers[iB].slotIndex    = tmpIdx;
+
+  clearSwapState();
+  updateTeamDisplay();
+  updateUI();
+  showToast('Players swapped. Don’t forget to Save Lineup!', 'success', 2500);
 }
 
 // REPLACE this function
@@ -733,7 +881,7 @@ function updateTeamDisplay() {
   }
 
   document.querySelectorAll('.position-slot').forEach(slot => {
-    slot.classList.remove('limit-exceeded'); // reset visual
+    slot.classList.remove('limit-exceeded', 'swap-anchor', 'swap-allowed');  // reset visual
     const pos = slot.dataset.position; // 'START' or 'BENCH'
     const idx = parseInt(slot.dataset.index, 10);
     const player = renderPlayers.find(p => p.slotPosition === pos && p.slotIndex === idx);
@@ -788,6 +936,12 @@ function updateTeamDisplay() {
         <i class="bi bi-plus-circle add-icon"></i>
       `;
     }
+    const isAnchor = swapAnchor && swapAnchor.slotPosition === pos && swapAnchor.slotIndex === idx;
+if (isAnchor) slot.classList.add('swap-anchor');
+
+const key = slotKey(pos, idx);
+if (swapAllowedTargets.has(key)) slot.classList.add('swap-allowed');
+
   });
 
   // Banner warning if any club exceeds starter limit
@@ -1324,6 +1478,25 @@ async function clearTeam() {
     console.error('Clear team error:', e);
     alert('Failed to clear team');
   }
+}
+// Pretty toast helper (non-blocking prompt)
+function showToast(message, type = 'info', timeout = 2000) {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const el = document.createElement('div');
+  el.className = `app-toast toast-${type}`;
+  el.innerHTML = `<span>${message}</span>`;
+  container.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, timeout);
 }
 
 function escapeHtml(str) {

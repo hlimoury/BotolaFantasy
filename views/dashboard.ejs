@@ -1128,7 +1128,62 @@
   min-height: 1.8rem;
 }
 
+/* Swap highlights */
+.position-slot.swap-anchor {
+  outline: 3px solid #ffc107;
+  outline-offset: 2px;
+}
 
+.position-slot.swap-allowed {
+  box-shadow: 0 0 0 3px rgba(13,110,253,.35);
+  cursor: pointer;
+}
+
+/* Toasts */
+.toast-container {
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.app-toast {
+  background: #1f2937;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  min-width: 220px;
+  max-width: 360px;
+  transform: translateX(8px);
+  opacity: 0;
+  transition: all .25s ease;
+  box-shadow: 0 10px 20px rgba(0,0,0,.2);
+  border-left: 4px solid #6b7280;
+}
+
+.app-toast.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.toast-success { 
+  border-left-color: #22c55e; 
+}
+
+.toast-warning { 
+  border-left-color: #f59e0b; 
+}
+
+.toast-danger { 
+  border-left-color: #ef4444; 
+}
+
+.toast-info { 
+  border-left-color: #0ea5e9; 
+}
 
   </style>
 </head>
@@ -1413,6 +1468,7 @@
         </div>
     </div>
 </div>
+<div id="toastContainer" class="toast-container"></div>
 
   <footer class="text-center text-white py-3 mt-5">
     <p class="mb-0">&copy; 2025 Botola Fantasy. All rights reserved.</p>
