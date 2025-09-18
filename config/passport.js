@@ -6,7 +6,7 @@ const User = require('../models/User');
 module.exports = function initPassport() {
   const isProd = process.env.NODE_ENV === 'production';
   const defaultCallbackURL = isProd
-    ? 'https://botolafantasy.onrender.com/auth/google/callback'
+    ? 'https://www.botolafantasy.ma/auth/google/callback'
     : 'http://localhost:3000/auth/google/callback';
 
   passport.use(new GoogleStrategy(
